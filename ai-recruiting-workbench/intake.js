@@ -188,6 +188,8 @@ export function handleUpload(d, a, opts = {}) {
     evidence: clean.dropped.length ? ['入口脱敏：' + clean.dropped.join('、')] : [],
     inputHash: hash(buf),
   })
+  // 上传即绑定也记 candidate.bound（与后绑定同口径：账本里岗位关联全程可追溯）
+  if (bindPid) appendEvent(d, { type: 'candidate.bound', actor: 'system', subject: { kind: 'candidate', id: cid }, payload: { pid: bindPid, atIntake: true }, causedBy: ev.seq })
   return {
     ok: true, candidateId: cid, seq: ev.seq, stage: '待评估',
     file: relFile, parsedChars: clean.text.length,

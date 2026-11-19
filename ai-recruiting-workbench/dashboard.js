@@ -84,6 +84,11 @@ export function buildDashboard(d, opts) {
     if (e.type === 'assessment.recorded' && !g.firstAssessTs) g.firstAssessTs = ts
     if (e.type === 'assessment.recorded' && (e.payload || {}).deep) g.latestGrade = (e.payload || {}).deep.grade
     if (e.type === 'stage.advanced') g.entered[(e.payload || {}).to] = ts
+    // Offer 系列事件直接改 stage（不经 stage.advanced），到达时间同步入 entered —— 岗位漏斗 Offer/入职列依赖此数据
+    if (e.type === 'offer.sent') g.entered['Offer已发'] = ts
+    if (e.type === 'offer.accepted') g.entered['Offer已接受'] = ts
+    if (e.type === 'onboarding.scheduled') g.entered['待入职'] = ts
+    if (e.type === 'hire.confirmed') g.entered['已入职'] = ts
     if (e.type === 'resume.received') g.pid = (e.payload || {}).pid || ''
     if (e.type === 'hire.confirmed') g.hiredTs = ts
     if (e.type === 'decision.made' && !g.decidedTs) { g.decidedTs = ts; g.decision = (e.payload || {}).decision }

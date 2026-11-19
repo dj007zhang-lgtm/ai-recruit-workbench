@@ -823,6 +823,11 @@ export function performAction(d, a) {
       const reason = String(a.reason || '').trim()
       if (!reason) throw new Error(`HUMAN_CONTRACT: ${decision} 必须留理由`)
       const ev = humanEvent(decision, reason, { impact: impactOf(d, c.id).summary })
+      // 发 Offer 是业务事实：无论哪条 UI 路径，都必须写 offer.sent（薪资入账、Offer 环统计、接受率依赖它）
+      if (decision === 'Offer') {
+        appendEvent(d, { type: 'offer.sent', actor: 'human', subject: { kind: 'candidate', id: c.id },
+          payload: { salary: a.salary || '', note: reason }, causedBy: ev.seq })
+      }
       return { ok: true, seq: ev.seq, action, decision, to: DECISIONS[decision], message: `${c.name} → ${DECISIONS[decision]}（已留痕：${reason.slice(0, 30)}）` }
     }
     case 'bind_position': {
