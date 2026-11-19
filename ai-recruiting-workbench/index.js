@@ -434,6 +434,7 @@ export function apply(ctx, config = {}) {
         const c = fold(d).byId[cid]
         if (!c) return replyJson(res, 400, { ok: false, error: '候选人不存在' })
         const name = String(a.interviewer || batch.interviewer || '面试官').trim().slice(0, 20)
+        if (a.pass === false && !String(a.note || '').trim()) return replyJson(res, 400, { ok: false, error: '请填写不通过的理由' })
         const ev = appendEvent(d, { type: 'feedback.submitted', actor: 'human', subject: { kind: 'candidate', id: cid },
           payload: { interviewer: name, interviewerToken: String(a.token || ''), batchToken: String(a.token || ''), byInterviewer: true, round: batch.round,
             score: a.score == null || a.score === '' ? null : Number(a.score), pass: a.pass !== false, note: String(a.note || '').slice(0, 1000),
@@ -488,6 +489,8 @@ export function apply(ctx, config = {}) {
         const c = fold(d).byId[cid]
         if (!c) { replyJson(res, 400, { ok: false, error: '候选人不存在' }); return }
         const name = String(a.interviewer || hit.interview.interviewer || '面试官').trim().slice(0, 20)
+        // 不通过必须留理由（与 HUMAN_CONTRACT 一致：否定结论需要可追溯依据）
+        if (a.pass === false && !String(a.note || '').trim()) return replyJson(res, 400, { ok: false, error: '请填写不通过的理由' })
         // 面试官提交：只写 feedback.submitted（actor=human，标注 interviewer 及 token 来源），不直接拍板录用
         const ev = appendEvent(d, { type: 'feedback.submitted', actor: 'human', subject: { kind: 'candidate', id: cid },
           payload: { interviewer: name, interviewerToken: String(a.token || ''), byInterviewer: true, round: hit.interview.round || '初试',
@@ -1441,38 +1444,31 @@ export function apply(ctx, config = {}) {
         ? '<div class="done">✅ 你已提交过本次面评，感谢！招聘团队会据此推进。</div>' + interviewBriefHtml(brief, esc)
         : interviewBriefHtml(brief, esc) + `
       <form class="card form" id="ivform" autocomplete="off">
-        <h3>提交面试评价</h3>
-        <div class="hint">你推荐通过后，再填写可面试时间供招聘方排期</div>
+        <h3>面试结论</h3>
+        <div class="fld"><span class="lb">你的姓名</span><input id="ivname" placeholder="面试官姓名" value="${esc(brief.interviewer)}"></div>
 
-        <label class="fld">你的姓名<input id="ivname" placeholder="面试官姓名" value="${esc(brief.interviewer)}"></label>
-
-        <div class="fld"><span class="lb">面试结论</span>
+        <div class="fld"><span class="lb">结论</span>
           <div class="seg" id="passSeg">
-            <button type="button" data-v="1" class="on">推荐通过</button>
+            <button type="button" data-v="1" class="on">通过</button>
             <button type="button" data-v="0">不通过</button>
           </div>
         </div>
 
-        <div class="dimsec"><div class="dt">逐维评档（可选，对照上方 AI 判档）</div>
-          ${(brief.alignment||[]).map(a=>`<div class="dr"><span class="dn">${esc(a.dim)}</span><span class="ai">AI ${esc(a.level||'—')}</span><select data-dim="${esc(a.dim)}"><option value="">不评</option>${lvOpts}</select></div>`).join('')}
-        </div>
-
-        <label class="fld">综合评分<span class="opt">可选 0-100</span><input id="score" type="number" min="0" max="100" placeholder="如 80"></label>
-        <label class="fld">面评意见<textarea id="note" rows="3" placeholder="技术栈深度 / 项目真实性 / 沟通表达 / 风险点…"></textarea></label>
-
-        <div id="availBlock" class="avail hidden">
-          <div class="availhead">推荐通过，请给出你的可用时间区间</div>
-          <div class="hint">填你能安排面试的时间段（如周三 14:00–18:00），招聘方会在区间内自行安排候选人</div>
+        <div id="availBlock" class="avail">
+          <div class="availhead">可安排面试的时间区间</div>
+          <div class="hint">招聘方会在你给的时间段内安排候选人</div>
           <div id="windows">
-            <div class="win">
-              <input type="datetime-local" class="winFrom"><span class="tilde">至</span><input type="datetime-local" class="winTo"><input type="text" class="winNote" placeholder="备注（线上/线下）">
-            </div>
+            <div class="win"><input type="datetime-local" class="winFrom"><span class="tilde">至</span><input type="datetime-local" class="winTo"></div>
           </div>
           <button type="button" id="addwin" class="ghost">+ 再加一个时间区间</button>
-          <label class="fld">其他说明<span class="opt">可选</span><textarea id="availNote" rows="2" placeholder="如：只在工作日下午；面试间隔需 30 分钟"></textarea></label>
         </div>
 
-        <button type="submit" id="submit">提交给招聘团队</button>
+        <div id="reasonBlock" class="reason hidden">
+          <div class="reasonhead">不通过理由</div>
+          <textarea id="reason" rows="3" placeholder="如：技术深度不足 / 项目真实性存疑 / 沟通表达不适合团队"></textarea>
+        </div>
+
+        <button type="submit" id="submit">提交</button>
         <div id="msg" class="msg"></div>
       </form>
       <script>
@@ -1482,32 +1478,31 @@ export function apply(ctx, config = {}) {
             document.querySelectorAll('#passSeg button').forEach(function (x) { x.classList.remove('on') });
             b.classList.add('on');
             PASS = b.dataset.v;
-            var ab = document.getElementById('availBlock');
-            if (PASS === '1') ab.classList.remove('hidden'); else ab.classList.add('hidden');
+            document.getElementById('availBlock').classList.toggle('hidden', PASS !== '1');
+            document.getElementById('reasonBlock').classList.toggle('hidden', PASS === '1');
           };
         });
         document.getElementById('addwin').onclick = function () {
           var d = document.createElement('div'); d.className = 'win';
-          d.innerHTML = '<input type="datetime-local" class="winFrom"><span class="tilde">至</span><input type="datetime-local" class="winTo"><input type="text" class="winNote" placeholder="备注（线上/线下）">';
+          d.innerHTML = '<input type="datetime-local" class="winFrom"><span class="tilde">至</span><input type="datetime-local" class="winTo">';
           document.getElementById('windows').appendChild(d);
         };
         document.getElementById('ivform').onsubmit = async function (e) {
           e.preventDefault();
           var msg = document.getElementById('msg');
-          var dims = {};
-          document.querySelectorAll('select[data-dim]').forEach(function (s) { if (s.value) dims[s.dataset.dim] = s.value });
+          var reason = document.getElementById('reason').value.trim();
+          if (PASS !== '1' && !reason) { msg.className = 'msg bad'; msg.textContent = '请填写不通过的理由'; return; }
           var windows = [];
           if (PASS === '1') {
             document.querySelectorAll('#windows .win').forEach(function (row) {
               var f0 = row.querySelector('.winFrom').value;
               var t0 = row.querySelector('.winTo').value;
-              if (f0) windows.push({ from: f0, to: t0 || '', note: row.querySelector('.winNote').value || '' });
+              if (f0) windows.push({ from: f0, to: t0 || '', note: '' });
             });
+            if (!windows.length) { msg.className = 'msg bad'; msg.textContent = '请至少给一个可安排面试的时间区间'; return; }
           }
           var body = { token: ${JSON.stringify(token)}, interviewer: document.getElementById('ivname').value,
-            pass: PASS === '1', score: document.getElementById('score').value,
-            note: document.getElementById('note').value, dims: Object.keys(dims).length ? dims : null,
-            windows: windows, availNote: PASS === '1' ? document.getElementById('availNote').value : '' };
+            pass: PASS === '1', note: reason, windows: windows };
           msg.className = 'msg'; msg.textContent = '提交中…';
           try {
             var r = await fetch('/api/ai-recruiting/interviewer-submit', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
@@ -1532,25 +1527,22 @@ export function apply(ctx, config = {}) {
       <div class="panel" data-i="${i}" ${i === 0 ? '' : 'style="display:none"'}>
         ${interviewBriefHtml(b, esc)}
         <form class="card form" data-cid="${esc(b.candidateId)}" data-i="${i}">
-          <h3>提交面试评价</h3>
-          <div class="hint">推荐通过后，再填写可面试时间</div>
-          <label class="fld">你的姓名<input class="ivname" placeholder="面试官姓名" value="${esc(batch.interviewer)}"></label>
-          <div class="fld"><span class="lb">面试结论</span>
-            <div class="seg"><button type="button" data-v="1" class="on">推荐通过</button><button type="button" data-v="0">不通过</button></div>
+          <h3>面试结论</h3>
+          <div class="fld"><span class="lb">你的姓名</span><input class="ivname" placeholder="面试官姓名" value="${esc(batch.interviewer)}"></div>
+          <div class="fld"><span class="lb">结论</span>
+            <div class="seg"><button type="button" data-v="1" class="on">通过</button><button type="button" data-v="0">不通过</button></div>
           </div>
-          <div class="dimsec"><div class="dt">逐维评档（可选，对照上方 AI 判档）</div>
-            ${(b.alignment || []).map(a => `<div class="dr"><span class="dn">${esc(a.dim)}</span><span class="ai">AI ${esc(a.level || '—')}</span><select data-dim="${esc(a.dim)}"><option value="">不评</option>${lvOpts}</select></div>`).join('')}
-          </div>
-          <label class="fld">综合评分<span class="opt">可选 0-100</span><input class="score" type="number" min="0" max="100" placeholder="如 80"></label>
-          <label class="fld">面评意见<textarea class="note" rows="3" placeholder="技术栈深度 / 项目真实性 / 沟通表达 / 风险点…"></textarea></label>
-          <div class="avail hidden">
-            <div class="availhead">推荐通过，请给出你的可用时间区间</div>
-            <div class="hint">招聘方会在区间内自行安排候选人</div>
-            <div class="wins"><div class="win"><input type="datetime-local" class="winFrom"><span class="tilde">至</span><input type="datetime-local" class="winTo"><input type="text" class="winNote" placeholder="备注（线上/线下）"></div></div>
+          <div class="avail">
+            <div class="availhead">可安排面试的时间区间</div>
+            <div class="hint">招聘方会在你给的时间段内安排候选人</div>
+            <div class="wins"><div class="win"><input type="datetime-local" class="winFrom"><span class="tilde">至</span><input type="datetime-local" class="winTo"></div></div>
             <button type="button" class="addwin ghost">+ 再加一个时间区间</button>
-            <label class="fld">其他说明<span class="opt">可选</span><textarea class="availNote" rows="2" placeholder="如：只在工作日下午"></textarea></label>
           </div>
-          <button type="submit" class="sub">提交给招聘团队</button>
+          <div class="reason hidden">
+            <div class="reasonhead">不通过理由</div>
+            <textarea class="reasonText" rows="3" placeholder="如：技术深度不足 / 项目真实性存疑 / 沟通表达不适合团队"></textarea>
+          </div>
+          <button type="submit" class="sub">提交</button>
           <div class="msg"></div>
         </form>
       </div>`).join('')
@@ -1576,21 +1568,22 @@ export function apply(ctx, config = {}) {
       '<div class="bhead"><h1>候选人评审</h1><div class="m">' + esc(batch.round) + ' · 共 ' + list.length + ' 人' + (batch.interviewer ? ' · 面试官 ' + esc(batch.interviewer) : '') + (batch.place ? ' · ' + esc(batch.place) : '') + '</div></div>' +
       '<div class="blayout"><div class="ivlist">' + items + '</div><div>' + panels + '</div></div></div>' +
       '<script>' +
-      'var WIN_HTML="<input type=datetime-local class=winFrom><span class=tilde>至</span><input type=datetime-local class=winTo><input type=text class=winNote placeholder=备注>";' +
+      'var WIN_HTML="<input type=datetime-local class=winFrom><span class=tilde>至</span><input type=datetime-local class=winTo>";' +
       'var items=document.querySelectorAll(".ivitem"),panels=document.querySelectorAll(".panel");' +
       'items.forEach(function(it){it.onclick=function(){items.forEach(function(x){x.classList.remove("on")});panels.forEach(function(x){x.style.display="none"});it.classList.add("on");var pnl=panels[parseInt(it.dataset.i,10)];if(pnl)pnl.style.display=""}})};' +
       'if(items[0])items[0].classList.add("on");' +
       'document.querySelectorAll(".form").forEach(function(form){' +
       '  var pass="1";var segBtns=form.querySelectorAll(".seg button");' +
-      '  segBtns.forEach(function(b){b.onclick=function(){segBtns.forEach(function(x){x.classList.remove("on")});b.classList.add("on");pass=b.dataset.v;var av=form.querySelector(".avail");if(pass==="1")av.classList.remove("hidden");else av.classList.add("hidden")}})};' +
+      '  segBtns.forEach(function(b){b.onclick=function(){segBtns.forEach(function(x){x.classList.remove("on")});b.classList.add("on");pass=b.dataset.v;form.querySelector(".avail").classList.toggle("hidden",pass!=="1");form.querySelector(".reason").classList.toggle("hidden",pass==="1")}})};' +
       '  form.querySelector(".addwin").onclick=function(){var sl=form.querySelector(".wins");var dv=document.createElement("div");dv.className="win";dv.innerHTML=WIN_HTML;sl.appendChild(dv)};' +
-      '  form.onsubmit=async function(e){e.preventDefault();var msg=form.querySelector(".msg");var dims={};' +
-      '    form.querySelectorAll("select[data-dim]").forEach(function(s){if(s.value)dims[s.dataset.dim]=s.value});' +
-      '    var windows=[];if(pass==="1"){form.querySelectorAll(".win").forEach(function(r){var f0=r.querySelector(".winFrom").value;var t0=r.querySelector(".winTo").value;if(f0)windows.push({from:f0,to:t0||"",note:r.querySelector(".winNote").value||""})})}' +
-      '    var body={token:' + JSON.stringify(token) + ',interviewer:form.querySelector(".ivname").value,pass:pass==="1",score:form.querySelector(".score").value,note:form.querySelector(".note").value,dims:Object.keys(dims).length?dims:null,windows:windows,availNote:pass==="1"?form.querySelector(".availNote").value:""};' +
+      '  form.onsubmit=async function(e){e.preventDefault();var msg=form.querySelector(".msg");' +
+      '    var reason=form.querySelector(".reasonText").value.trim();' +
+      '    if(pass!=="1"&&!reason){msg.className="msg bad";msg.textContent="请填写不通过的理由";return}' +
+      '    var windows=[];if(pass==="1"){form.querySelectorAll(".win").forEach(function(r){var f0=r.querySelector(".winFrom").value;var t0=r.querySelector(".winTo").value;if(f0)windows.push({from:f0,to:t0||"",note:""})});if(!windows.length){msg.className="msg bad";msg.textContent="请至少给一个时间区间";return}}' +
+      '    var body={token:' + JSON.stringify(token) + ',candidateId:form.dataset.cid,interviewer:form.querySelector(".ivname").value,pass:pass==="1",note:reason,windows:windows};' +
       '    msg.className="msg";msg.textContent="提交中…";' +
-      '    try{var r=await fetch("/api/ai-recruiting/interviewer-submit-candidate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign({candidateId:form.dataset.cid},body))});var j=await r.json();' +
-      '      if(j.ok){msg.className="msg ok";msg.textContent="✅ "+j.message;form.style.display="none";var it=items[form.dataset.i];if(it){var d=document.createElement("span");d.className="ivdone";d.textContent="已提交";it.querySelector(".ivl").appendChild(d)}}' +
+      '    try{var r=await fetch("/api/ai-recruiting/interviewer-submit-candidate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});var j=await r.json();' +
+      '      if(j.ok){msg.className="msg ok";msg.textContent="✅ 已提交";form.style.display="none";var it=items[form.dataset.i];if(it&&!it.querySelector(".ivdone")){var d=document.createElement("span");d.className="ivdone";d.textContent="已提交";it.querySelector(".ivl").appendChild(d)}}' +
       '      else{msg.className="msg bad";msg.textContent=j.error||"提交失败"}}catch(err){msg.className="msg bad";msg.textContent="提交失败："+err.message}}' +
       '});' +
       '</script></body></html>'
@@ -1643,6 +1636,10 @@ body{margin:0;background:#0e1320;color:#e8eef8;font:14px/1.6 -apple-system,"Ping
 .dr select{width:96px;flex:none;background:#0e1320;border:1px solid #2b3350;color:#e8eef8;border-radius:8px;padding:6px 8px;font:12.5px inherit}
 .avail{margin:4px 0 14px;padding:14px;background:rgba(52,199,123,.06);border:1px solid rgba(52,199,123,.28);border-radius:11px}
 .avail.hidden{display:none}
+.reason{margin:4px 0 14px;padding:14px;background:rgba(244,113,113,.06);border:1px solid rgba(244,113,113,.28);border-radius:11px}
+.reason.hidden{display:none}
+.reasonhead{font-size:12.5px;font-weight:700;color:#f47171;margin-bottom:8px}
+.reason textarea{width:100%;background:#0e1320;border:1px solid #2b3350;color:#e8eef8;border-radius:9px;padding:10px 12px;font:13.5px/1.5 inherit;resize:vertical}
 .availhead{font-size:12.5px;font-weight:700;color:#34d399;margin-bottom:3px}
 .win{display:flex;gap:7px;margin-bottom:8px;align-items:center;flex-wrap:wrap}
 .win input{flex:1;min-width:130px;background:#0e1320;border:1px solid #2b3350;color:#e8eef8;border-radius:9px;padding:9px 11px;font:13px inherit}
