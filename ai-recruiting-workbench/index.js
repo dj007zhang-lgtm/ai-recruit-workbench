@@ -474,6 +474,11 @@ export function apply(ctx, config = {}) {
         out.hasLlm = !!llm
         out.hasStream = !!(llm && typeof llm.stream === 'function')
         try { out.providers = (llm && typeof llm.listProviders === 'function') ? await llm.listProviders() : 'no-listProviders' } catch (e) { out.errors.push('providers:' + e.message) }
+        // 当前会话选择 + 冷却中的路由（切模型后立刻可见影响）
+        out.sessionSelection = _sessionSelection()
+        out.cooling = Object.keys(_llmBadUntil || {}).filter(k => Date.now() < _llmBadUntil[k])
+        const _r = await resolveLlmRoute(true)
+        out.resolved = _r ? { provider: _r.provider, model: _r.model, source: _r.source } : null
         if (out.hasStream) {
           const _rt = await resolveLlmRoute(true)
           const prov = _rt ? _rt.provider : ((config && config.jdProvider) || '?')
@@ -798,35 +803,70 @@ export function apply(ctx, config = {}) {
   }))
 
   // 深度适配性评估：LLM 按资深 HRBP 范式诊断（场景对齐/证据链/双向证伪/面试题）
-  // ===== LLM 路由动态解析（不写死 provider/model：跟随 DSH 当前可用通道，换机器/换账号都能用）=====
-  let _llmRoute = null
-  let _llmRouteAt = 0
-  async function resolveLlmRoute(force) {
-    if (!force && _llmRoute && Date.now() - _llmRouteAt < 60000) return _llmRoute
-    const llm = (typeof ctx.get === 'function' && ctx.get('llm')) || ctx.llm
-    if (!llm || typeof llm.stream !== 'function') return null
-    // ① 最优先：DSH 当前会话的默认模型（用户正在用的，必然可用；换模型/换账号自动跟随）
+  // ===== LLM 路由动态解析 =====
+  // 设计目标：用户随时可切模型（deepseek / workbuddy / trae-cn / 其他），插件必须自动跟随且永不因切模型而失效。
+  // 策略（每次调用都重新核对会话模型，不依赖长缓存）：
+  //   ① 会话默认模型（用户当前在用的）—— 变则立即跟随
+  //   ② 会话模型不可用（额度/权限）→ 自动探测其他可用通道并记住（不改用户选择，仅本插件内部降级）
+  //   ③ 全部不可用 → 返回 null，调用方明确等待，绝不静默用规则替代
+  let _llmRoute = null            // 当前生效路由
+  let _llmSessionKey = ''         // 上次会话模型标识（用于检测切换）
+  let _llmBadUntil = {}           // provider/model → 冷却截止时间（失败后短期跳过）
+  const LLM_BAD_TTL = 5 * 60 * 1000
+
+  function _sessionSelection() {
     try {
       const dm = (typeof ctx.get === 'function' && ctx.get('agentDefaultModel')) || ctx.agentDefaultModel
       const sel = dm && typeof dm.currentSelection === 'function' ? dm.currentSelection() : null
-      const pid = sel && (sel.provider || (sel.model && sel.model.provider))
-      const mid = sel && (sel.model && (sel.model.id || sel.model)) || sel && sel.modelId
-      if (pid && mid && typeof llm.stream === 'function') {
-        _llmRoute = { llm, provider: pid, model: mid, source: 'session-default' }
-        _llmRouteAt = Date.now()
-        return _llmRoute
+      if (!sel) return null
+      const pid = sel.provider || (sel.model && sel.model.provider)
+      const mid = (sel.model && (sel.model.id || sel.model)) || sel.modelId
+      return (pid && mid) ? { provider: String(pid), model: String(mid) } : null
+    } catch (e) { return null }
+  }
+
+  async function _tryCall(llm, provider, model, text) {
+    const key = provider + '|' + model
+    if (_llmBadUntil[key] && Date.now() < _llmBadUntil[key]) return { ok: false, reason: 'cooling' }
+    try {
+      let out = ''
+      let failure = null
+      for await (const ch of llm.stream({ provider, model, temperature: 0, messages: [{ role: 'user', content: [{ type: 'text', text }] }] })) {
+        if (ch && typeof ch.text === 'string') out += ch.text
+        if (ch && ch.type === 'finish' && ch.reason && ch.reason.failure) failure = ch.reason.failure
       }
-    } catch (e) { /* 继续降级到配置/自动发现 */ }
-    // ② 显式配置（用户可在插件 config 里指定）
-    if (config && config.jdProvider && config.jdModel) {
-      _llmRoute = { llm, provider: config.jdProvider, model: config.jdModel, source: 'config' }
-      _llmRouteAt = Date.now()
-      return _llmRoute
+      if (out.trim()) { delete _llmBadUntil[key]; return { ok: true, text: out } }
+      _llmBadUntil[key] = Date.now() + LLM_BAD_TTL
+      return { ok: false, reason: failure ? ('empty:' + JSON.stringify(failure).slice(0, 120)) : 'empty-response' }
+    } catch (e) {
+      _llmBadUntil[key] = Date.now() + LLM_BAD_TTL
+      return { ok: false, reason: String((e && e.message) || e).slice(0, 160) }
     }
-    // 动态发现：遍历已注册 provider，逐个试真调用（空返回/异常则换下一条）
+  }
+
+  async function resolveLlmRoute(force) {
+    const llm = (typeof ctx.get === 'function' && ctx.get('llm')) || ctx.llm
+    if (!llm || typeof llm.stream !== 'function') return null
+    const sel = _sessionSelection()
+    const selKey = sel ? (sel.provider + '|' + sel.model) : ''
+    // 会话模型变了 → 立即丢弃旧路由（用户切模型后马上跟随）
+    if (selKey && selKey !== _llmSessionKey) { _llmRoute = null; _llmSessionKey = selKey }
+    if (!force && _llmRoute && _llmRoute.alive) return _llmRoute
+
+    // ① 会话默认模型：真调验证可用性（避免切到额度耗尽的模型后长时间失败）
+    if (sel) {
+      const r = await _tryCall(llm, sel.provider, sel.model, 'ok')
+      if (r.ok) { _llmRoute = { llm, provider: sel.provider, model: sel.model, source: 'session-default', alive: true }; return _llmRoute }
+      _llmRoute = null
+    }
+    // ② 插件显式配置
+    if (config && config.jdProvider && config.jdModel) {
+      const r = await _tryCall(llm, config.jdProvider, config.jdModel, 'ok')
+      if (r.ok) { _llmRoute = { llm, provider: config.jdProvider, model: config.jdModel, source: 'config', alive: true }; return _llmRoute }
+    }
+    // ③ 自动探测其他可用通道（降级但不改用户选择）
     let providers = []
     try { providers = (typeof llm.listProviders === 'function') ? (llm.listProviders() || []) : [] } catch (e) { providers = [] }
-    // 优先顺序：官方 > 其他（magpie 等第三方额度可能耗尽）
     const order = providers.slice().sort((a, b) => {
       const rank = (x) => { const id = String((x && (x.id || x.provider)) || ''); return /official/i.test(id) ? 0 : /magpie|workbuddy/i.test(id) ? 2 : 1 }
       return rank(a) - rank(b)
@@ -836,21 +876,12 @@ export function apply(ctx, config = {}) {
       if (!pid) continue
       let models = []
       try { models = (typeof llm.listModels === 'function') ? (await llm.listModels(pid) || []) : [] } catch (e) { models = [] }
-      // 模型排序：优先非 workbuddy（该网关额度易耗尽），其余按原序
-      const sorted = models.slice().sort((a, b) => {
-        const r = (x) => /workbuddy/i.test(String((x && x.id) || '')) ? 1 : 0
-        return r(a) - r(b)
-      })
+      const sorted = models.slice().sort((a, b) => (/workbuddy/i.test(String((a && a.id) || '')) ? 1 : 0) - (/workbuddy/i.test(String((b && b.id) || '')) ? 1 : 0))
       for (const m of sorted.slice(0, 6)) {
         if (!m || !m.id) continue
-        // 真调一次探测（极短 prompt，成本可忽略），确认该路由真的能出文本
-        try {
-          let t = ''
-          for await (const ch of llm.stream({ provider: pid, model: m.id, temperature: 0, messages: [{ role: 'user', content: [{ type: 'text', text: 'ok' }] }] })) {
-            if (ch && typeof ch.text === 'string') t += ch.text
-          }
-          if (t.trim()) { _llmRoute = { llm, provider: pid, model: m.id, source: 'auto' }; _llmRouteAt = Date.now(); return _llmRoute }
-        } catch (e) { /* 换下一个 */ }
+        if (sel && pid === sel.provider && m.id === sel.model) continue  // 已试过
+        const r = await _tryCall(llm, pid, m.id, 'ok')
+        if (r.ok) { _llmRoute = { llm, provider: pid, model: m.id, source: 'auto-fallback', alive: true }; return _llmRoute }
       }
     }
     return null
@@ -858,17 +889,27 @@ export function apply(ctx, config = {}) {
 
   async function llmDeepAssess(prompt) {
     const route = await resolveLlmRoute()
-    if (!route) return { ok: false, reason: 'no-llm-route', message: '未发现可用的 LLM 通道（DSH 未配置模型或适配器未注册）' }
+    if (!route) return { ok: false, reason: 'no-llm-route', message: '未发现可用的 LLM 通道（DSH 未配置模型或适配器未注册）。AI 初筛将保持等待。' }
     let text = ''
+    let failure = null
     try {
       for await (const chunk of route.llm.stream({ provider: route.provider, model: route.model, temperature: 0, messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }] })) {
         if (chunk && typeof chunk.text === 'string' && chunk.type !== 'block-start') text += chunk.text
+        if (chunk && chunk.type === 'finish' && chunk.reason && chunk.reason.failure) failure = chunk.reason.failure
       }
     } catch (e) {
-      _llmRoute = null  // 失败后下次重新发现（可能是额度/账号/路由变更）
+      // 标记该路由失效并冷却，下次调用立即换通道（用户切模型后也能马上跟随）
+      _llmBadUntil[route.provider + '|' + route.model] = Date.now() + LLM_BAD_TTL
+      if (_llmRoute) _llmRoute.alive = false
+      _llmRoute = null
       return { ok: false, reason: 'llm-error: ' + String((e && e.message) || e) }
     }
-    if (!text.trim()) { _llmRoute = null; return { ok: false, reason: 'llm-empty-response' } }
+    if (!text.trim()) {
+      _llmBadUntil[route.provider + '|' + route.model] = Date.now() + LLM_BAD_TTL
+      if (_llmRoute) _llmRoute.alive = false
+      _llmRoute = null
+      return { ok: false, reason: 'llm-empty-response', failure: failure || null, tried: { provider: route.provider, model: route.model } }
+    }
     return { ok: true, text, route: { provider: route.provider, model: route.model, source: route.source } }
   }
 
