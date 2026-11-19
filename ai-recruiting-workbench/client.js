@@ -1256,7 +1256,7 @@ window.__ModuleLoader__.load({
           try { navigator.clipboard.writeText(url); setToast('已复制面试官链接，可直接发给面试官') } catch (e) { setToast('链接：' + url) }
         } }, '🔗 面试官链接') : null,
         // 面试官反馈的可面试时间（招聘方据此排期；点时段即填入选定时间）
-        (c.availability && c.availability.length) ? h('div', { style: { ...card, marginTop: 8, padding: '9px 12px', borderColor: tint(C.good, .35), background: tint(C.good, .05) } },
+        (c.availability && c.availability.length) ? h('div', { style: { ...card, marginTop: 8, padding: '9px 12px', borderColor: tint(C.good, .35), background: tint(C.good, .05), flexBasis: '100%', width: '100%' } },
           h('div', { style: { fontSize: 11, fontWeight: 700, color: C.good, marginBottom: 5 } }, '📅 面试官反馈的可面试时间'),
           ...c.availability.map((av, i) => {
             const wins = av.windows || av.slots || []
@@ -1269,7 +1269,7 @@ window.__ModuleLoader__.load({
           }),
           h('button', { type: 'button', style: { ...btn, padding: '2px 9px', fontSize: 10.5, marginTop: 4 }, onClick: () => setPanel('interview') }, '去排期 →')) : null,
         // 交付物导出：Offer 函 / 面试评估表 / 候选人报告（数据全部来自账本，不臆造）
-        h('div', { style: { display: 'flex', gap: 4, alignItems: 'center' } },
+        h('div', { style: { display: 'flex', gap: 4, alignItems: 'center', flexBasis: '100%', marginTop: 4 } },
           h('span', { style: { fontSize: 10.5, color: C.muted } }, '导出'),
           ...[['eval', '评估表'], ['report', '评估报告'], ['offer', 'Offer 函']].map(([k, lb]) =>
             h('button', { key: k, type: 'button', style: { ...btn, padding: '1px 7px', fontSize: 10.5 }, disabled: !!docBusy, onClick: async () => {

@@ -449,7 +449,20 @@ export function apply(ctx, config = {}) {
             payload: { interviewer: name, interviewerToken: String(a.token || ''), batchToken: String(a.token || ''), round: batch.round, windows, slots: windows, note: availNote }, causedBy: ev.seq })
           availSeq = ev2.seq
         }
-        replyJson(res, 200, { ok: true, seq: ev.seq, availSeq, message: '已提交' })
+        let eliminated = false
+        if (a.pass === false) {
+          const cur = fold(d).byId[cid] || {}
+          const NO_ELIM = ['已淘汰', '人才库', '已入职', 'Offer已发', 'Offer已接受', '待入职']
+          if (NO_ELIM.indexOf(cur.stage) < 0) {
+            appendEvent(d, { type: 'decision.made', actor: 'human', actorId: 'interviewer:' + name,
+              subject: { kind: 'candidate', id: cid },
+              payload: { decision: '淘汰', reason: '面试官 ' + name + ' 判定不通过：' + String(a.note || '').slice(0, 200),
+                from: cur.stage, byInterviewer: true, interviewer: name, interviewerToken: String(a.token || ''), reversible: true },
+              causedBy: ev.seq })
+            eliminated = true
+          }
+        }
+        replyJson(res, 200, { ok: true, seq: ev.seq, availSeq, eliminated, message: eliminated ? '已记录不通过并同步淘汰' : '已提交' })
       } catch (e) { replyJson(res, 400, { ok: false, error: String(e && e.message || e) }) }
     },
   }))
@@ -508,7 +521,21 @@ export function apply(ctx, config = {}) {
             payload: { interviewer: name, interviewerToken: String(a.token || ''), round: hit.interview.round || '初试', windows, slots: windows, note: availNote }, causedBy: ev.seq })
           availSeq = ev2.seq
         }
-        replyJson(res, 200, { ok: true, seq: ev.seq, availSeq, message: availSeq ? '面评与可面试时间已提交，招聘团队会据此排期' : '面评已提交给招聘团队' })
+        // 面试官判不通过 = 人的淘汰判断：同步写 decision.made（HUMAN_CONTRACT 要求淘汰必须留痕、可追溯、可复捞）
+        let eliminated = false
+        if (a.pass === false) {
+          const cur = fold(d).byId[cid] || {}
+          const NO_ELIM = ['已淘汰', '人才库', '已入职', 'Offer已发', 'Offer已接受', '待入职']
+          if (NO_ELIM.indexOf(cur.stage) < 0) {
+            appendEvent(d, { type: 'decision.made', actor: 'human', actorId: 'interviewer:' + name,
+              subject: { kind: 'candidate', id: cid },
+              payload: { decision: '淘汰', reason: '面试官 ' + name + ' 判定不通过：' + String(a.note || '').slice(0, 200),
+                from: cur.stage, byInterviewer: true, interviewer: name, interviewerToken: String(a.token || ''), reversible: true },
+              causedBy: ev.seq })
+            eliminated = true
+          }
+        }
+        replyJson(res, 200, { ok: true, seq: ev.seq, availSeq, eliminated, message: eliminated ? ('已记录不通过并同步淘汰') : (availSeq ? '面评与可面试时间已提交，招聘团队会据此排期' : '面评已提交给招聘团队') })
       } catch (e) { replyJson(res, 400, { ok: false, error: String(e && e.message || e) }) }
     },
   }))
