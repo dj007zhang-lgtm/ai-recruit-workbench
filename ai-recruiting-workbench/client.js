@@ -1815,6 +1815,47 @@ window.__ModuleLoader__.load({
         msg ? h('div', { style: { fontSize: 11.5, color: C.muted, marginTop: 6 } }, msg) : null)
     }
 
+    // 重新评估：把旧规则引擎（autoAssess）评过的候选人，用当前 BARS 重跑一遍。
+    // 存在理由：引擎升级后，存量结论与当前标准不一致会造成"AI 不推荐却仍在待评估"的错觉。
+    function ReevaluateCard({ onDone }) {
+      const [busy, setBusy] = React.useState(false)
+      const [preview, setPreview] = React.useState(null)
+      const [msg, setMsg] = React.useState('')
+      const call = async (body) => {
+        const j = await api('/api/ai-recruiting/reevaluate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        return j
+      }
+      const doPreview = async () => {
+        setBusy(true); setMsg('')
+        try { const j = await call({ dryRun: true }); setPreview(j) } catch (e) { setMsg('检查失败：' + String(e.message || e)) }
+        finally { setBusy(false) }
+      }
+      const doRun = async () => {
+        setBusy(true); setMsg('正在逐个用 AI 重新评估，每份约需 1-2 分钟…')
+        try {
+          const j = await call({})
+          setMsg('完成：' + (j.done || 0) + ' 份已重评' + (j.failed ? '，' + j.failed + ' 份失败' : ''))
+          setPreview(null); onDone && onDone()
+        } catch (e) { setMsg('重评失败：' + String(e.message || e)) }
+        finally { setBusy(false) }
+      }
+      const n = preview ? preview.total : null
+      return h('div', { style: { ...card, padding: '11px 14px' } },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+          h('div', { style: { fontSize: 11.5, fontWeight: 700 } }, '重新评估'),
+          h('span', { style: { fontSize: 10.5, color: C.muted } }, '把旧引擎评过的人用当前 AI 标准重跑'),
+          h('button', { type: 'button', style: { ...btn, marginLeft: 'auto', padding: '2px 10px', fontSize: 11 }, disabled: busy, onClick: doPreview }, busy ? '…' : '检查待重评')),
+        n != null ? h('div', { style: { marginTop: 8, fontSize: 11, color: C.muted } },
+          n ? h('div', null,
+            h('div', { style: { marginBottom: 6 } }, '发现 ' + n + ' 人使用旧规则结论，可用 AI 重新判定：'),
+            h('div', { style: { maxHeight: 130, overflowY: 'auto', marginBottom: 8 } },
+              ...(preview.candidates || []).slice(0, 30).map(c => h('div', { key: c.id, style: { padding: '2px 0' } },
+                '· ' + (c.name || c.id) + ' · ' + (c.stage || '') + ' · 旧结论：' + (c.route || '—')))),
+            h('button', { type: 'button', style: { ...primary, padding: '4px 12px', fontSize: 11.5 }, disabled: busy, onClick: doRun }, busy ? '重评中…' : '开始重评 ' + n + ' 人'))
+          : h('div', { style: { color: C.good } }, '✓ 没有需要重评的候选人（都已是当前 AI 标准结论）')) : null,
+        msg ? h('div', { style: { marginTop: 6, fontSize: 11, color: /失败|✗/.test(msg) ? C.bad : C.muted } }, msg) : null)
+    }
+
     // 简历管理：独立模块（与候选人流程/职位管理同级），含批量上传解析
     function IntakePage({ data, onDone, onGoto, onOpen }) {
       const cs = data.candidates || []
@@ -1831,6 +1872,7 @@ window.__ModuleLoader__.load({
         h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
           h('div', { style: { fontSize: 13, fontWeight: 700 } }, '📥 简历管理'),
           h(UploadForm, { positions: data.positions, onDone, hideClose: true }),
+          h(ReevaluateCard, { onDone }),
           h('div', { style: { ...card, fontSize: 11.5, color: C.muted, lineHeight: 1.75 } },
             h('b', { style: { fontSize: 11.5, color: 'inherit' } }, '接入即分流（无需手动初筛）'),
             h('div', { style: { marginTop: 4 } }, '每份简历进入后自动完成：脱敏 → 三键去重 → 技术栈预检 → 自动匹配岗位 → AI 初筛，并按结论直接归位：'),

@@ -590,10 +590,13 @@ export function performAction(d, a) {
       }
       // 硬门槛一票否决：有明确证据的 fail 项 → 直接淘汰（最高优先级，不受"缺证据"影响）
       const hardFail = (out.gateResults || []).some(g => g.verdict === 'fail')
-      // 缺关键证据的人（且硬门槛未 fail）：即使分数低也不直接淘汰——留人复核（否则误杀"简历没写全但其实合格"的人）
-      const insufficient = !hardFail && (/待补充|缺.*证据|未判定|证据不足/.test(r2) || (Array.isArray(out.undetermined) && out.undetermined.length > 0))
-      // 分流：硬门槛 fail 或 grade=C → 淘汰；S/A → 初试；其余 → 待评估
-      const isNo = hardFail || (!insufficient && (grade ? grade === 'C' : /C 级|不对口|不推荐|不建议/.test(r2)))
+      // 结论优先原则：AI 给出明确「不推荐/不建议/C级/不对口」结论 → 淘汰；
+      //   缺证据只在"结论本身是待定"时用于留人复核，不能用来否定一个明确的否定结论。
+      const r2IsNo = /C 级|不对口|不推荐|不建议/.test(r2)
+      const r2IsPending = /待补充|缺.*证据|未判定|证据不足/.test(r2)
+      const insufficient = !hardFail && r2IsPending && !r2IsNo
+      // 分流：硬门槛 fail 或 grade=C 或明确不推荐 → 淘汰；S/A → 初试；其余 → 待评估
+      const isNo = hardFail || (grade ? grade === 'C' : r2IsNo)
       const isSA = !hardFail && !insufficient && (grade ? (grade === 'S' || grade === 'A') : /S 级|A 级/.test(r2))
       const canAdv = ['待评估', '待初试', '待发 Offer'].indexOf(c.stage) >= 0
       if (canAdv) {

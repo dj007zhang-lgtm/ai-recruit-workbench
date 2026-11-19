@@ -466,6 +466,40 @@ export function apply(ctx, config = {}) {
   }))
   // 关岗前影响面：列出该职位在途候选人
   dispose.push(ctx.webServer.register({
+    kind: 'exact', path: '/api/ai-recruiting/reevaluate',
+    handler: async (req, res) => {
+      // 重新评估：对使用旧规则引擎（无 BARS grade）的候选人重跑 BARS。
+      // 用途：引擎升级后让存量数据与当前标准对齐；不做静默降级，AI 不可用则明确报错。
+      try {
+        const d = dataDir(); ensure(d); migrateLegacy(d)
+        const a = req.method === 'POST' ? await readPost(req, res, 8 * 1024) : {}
+        if (a === null) return
+        const onlyId = a && a.candidateId ? String(a.candidateId) : ''
+        const dryRun = !!(a && a.dryRun)
+        const s0 = fold(d)
+        const targets = s0.candidates.filter(c => {
+          if (onlyId && c.id !== onlyId) return false
+          if (!c.pid) return false
+          const p = s0.positions.find(x => x.id === c.pid)
+          const hasSc = p && p.scorecard && (p.scorecard.softDims || []).length
+          if (!hasSc) return false
+          const isOldRule = !(c.deep && c.deep.grade) || (c.deep && c.deep.engine && c.deep.engine !== 'bars')
+          return isOldRule && ['已淘汰', '人才库'].indexOf(c.stage) < 0
+        })
+        if (dryRun) return replyJson(res, 200, { ok: true, dryRun: true, total: targets.length, candidates: targets.map(c => ({ id: c.id, name: c.name, stage: c.stage, engine: (c.deep && c.deep.engine) || 'rule', route: c.route })) })
+        const results = []
+        for (const c of targets) {
+          try {
+            const r = await assessCandidate(d, c.id)
+            results.push({ id: c.id, name: c.name, ok: !!r.ok, engine: r.engine, route: r.route, to: r.to || null, message: r.message || '', grade: r.diag && r.diag.grade, score: r.diag && r.diag.score })
+          } catch (e) { results.push({ id: c.id, name: c.name, ok: false, error: String(e && e.message || e) }) }
+        }
+        const done = results.filter(x => x.ok).length
+        replyJson(res, 200, { ok: true, total: targets.length, done, failed: targets.length - done, results })
+      } catch (e) { replyJson(res, 500, { ok: false, error: String(e && e.message || e) }) }
+    },
+  }))
+  dispose.push(ctx.webServer.register({
     kind: 'exact', path: '/api/ai-recruiting/llm-probe',
     resource: async () => {
       const out = { hasCtx: !!ctx, providers: [], chunks: [], text: '', errors: [] }
@@ -1081,7 +1115,7 @@ export function apply(ctx, config = {}) {
       deep: diag, conf, route: act.route, action: conclusion, conclusion: act.conclusion, tier,
       scores: scored.alignment.reduce((m, x) => { if (x.score != null) m[x.dim] = x.score; return m }, {}), weighted: score, summary: act.route + '｜' + conclusion,
       gateResults,
-      basedOn: { l0: 'v1.2', l1: 'v1', rule: 'bars-v2', model: (config && config.jdModel) || 'workbuddy/deepseek-v4.1-flash' },
+      basedOn: { l0: 'v1.2', l1: 'v1', rule: 'bars-v2', model: (_llmRoute ? _llmRoute.provider + '/' + _llmRoute.model : 'unresolved') },
       inputHash: hash(c.resume || ''), causedBy: c.seqs && c.seqs.length ? c.seqs[c.seqs.length - 1] : null })
     // 5) 分流：S/A 进初试；C 自动淘汰；B 留人；定局态只更新诊断
     const canAdvance = ['待评估', '待初试', '待发 Offer'].indexOf(c.stage) >= 0
@@ -1645,7 +1679,7 @@ export function apply(ctx, config = {}) {
           appendEvent(d, {
             type: 'ai_interview.completed', actor: 'agent', subject: { kind: 'candidate', id: c.id },
             payload: { turns: sess.messages.length, dims, summary: sess.suggestion.summary, overall: sess.suggestion.overall, positionId: p.id },
-            basedOn: { rule: 'ai-interviewer-v1', model: (config && config.jdModel) || 'workbuddy/deepseek-v4.1-flash' },
+            basedOn: { rule: 'ai-interviewer-v1', model: (_llmRoute ? _llmRoute.provider + '/' + _llmRoute.model : 'unresolved') },
             inputHash: hash(String(c.resume || '') + '|' + sess.messages.length), causedBy: c.seqs ? c.seqs[c.seqs.length - 1] : null,
           })
           replyJson(res, 200, { ok: true, done: true, session: sess })
