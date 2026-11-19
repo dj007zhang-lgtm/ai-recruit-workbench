@@ -328,6 +328,7 @@ window.__ModuleLoader__.load({
       const total = inFlow.reduce((a, s) => a + (counts[s] || 0), 0)
       // 终态单独列出（淘汰/人才库/Offer拒绝/已入职），让人能主动去看，而不是被混进"全部"
       const terminal = STAGES.filter(s => TERMINAL_STAGES.indexOf(s) >= 0 && (counts[s] || 0) > 0)
+      const archivedTotal = terminal.reduce((a, s) => a + (counts[s] || 0), 0)
       const visible = inFlow.concat(terminal)
       const chip = (key, label, n, active, onClick) => h('button', {
         key, type: 'button', onClick,
@@ -336,7 +337,10 @@ window.__ModuleLoader__.load({
           color: active ? '#fff' : C.text, fontWeight: active ? 700 : 500 },
       }, label, h('span', { style: { fontSize: 12, fontWeight: 800, color: active ? '#fff' : (n ? C.text : C.muted), fontVariantNumeric: 'tabular-nums', opacity: active ? .9 : 1 } }, String(n)))
       return h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 } },
-        chip('__all', '全部', total, !stage, () => setStage('')),
+        // 「全部」有歧义（总数 30，但只算在流程的 4 个）→ 明确叫「在流程」，并显示总候选数作参照
+        chip('__all', '在流程', total, !stage, () => setStage('')),
+        h('span', { style: { fontSize: 11, color: C.muted, alignSelf: 'center', marginLeft: 2, marginRight: 4 } },
+          '/ 共 ' + (archivedTotal + total) + ' 人（含归档 ' + archivedTotal + '）'),
         ...visible.map(s => chip(s, s, counts[s] || 0, stage === s, () => setStage(stage === s ? '' : s))),
         !visible.length ? h('span', { style: { fontSize: 12, color: C.muted, padding: '5px 0' } }, '暂无候选人（去简历管理上传）') : null)
     }
