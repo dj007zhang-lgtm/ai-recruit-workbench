@@ -1970,6 +1970,14 @@ window.__ModuleLoader__.load({
               { label: '待你判断', v: pending, u: '项' }].map(st => h('div', { key: st.label },
               h('div', { style: { fontSize: 28, fontWeight: 800, lineHeight: 1, letterSpacing: '-.5px', background: 'linear-gradient(90deg,#9db8ff,#c4b5fd)', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent', display: 'inline-block' } }, String(st.v), h('span', { style: { fontSize: 12, fontWeight: 500, marginLeft: 2, WebkitTextFillColor: '#8b9bc4' } }, st.u)),
               h('div', { style: { fontSize: 11, color: '#8b9bc4', marginTop: 6 } }, st.label)))))))
+      // AI 通道等待提示（有候选人等 AI 初筛时显式暴露，绝不静默用规则替代）
+      const aiSt = data.aiStatus || {}
+      if (aiSt.pendingCandidates > 0) out.push(h('div', { style: { ...card, borderColor: tint(C.warn, .5), background: tint(C.warn, .08), marginBottom: 10, padding: '9px 13px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
+        h('span', { style: { fontSize: 15 } }, '⚙'),
+        h('div', { style: { flex: 1, minWidth: 220 } },
+          h('b', { style: { fontSize: 12.5, color: C.warn } }, aiSt.pendingCandidates + ' 人等待 AI 初筛'),
+          h('div', { style: { fontSize: 11, color: C.muted, marginTop: 2 } }, aiSt.hint || 'AI 网关不可用时不使用规则替代，恢复后重新初筛即可')),
+        h('button', { type: 'button', style: { ...btn, padding: '2px 10px', fontSize: 11 }, onClick: () => onGoto('intake') }, '去简历管理重试')))
       // 看板契约·需要你处理：回答「今天必须干什么」（执行视角）；触发动作=逐条处理
       // ===== 需要你处理（指挥台核心：待办 + 超时预警 合并，最该看的放最上）=====
       if (pending || alerts.length) {

@@ -337,7 +337,14 @@ export function apply(ctx, config = {}) {
           ? config.dataDir
           : join((ctx.workingDirectory && ctx.workingDirectory.defaultDirectory) || process.cwd(), 'recruiting')
         ensure(d)
-        return new Response(JSON.stringify(workbenchData(d, cid, buildDashboard, { period })), {
+        const wb = workbenchData(d, cid, buildDashboard, { period })
+        // AI 通道状态（不做真实调用；由 /llm-probe 主动探测，或由最近一次评估失败推断）
+        try {
+          const s0 = fold(d)
+          const pendingAI = s0.candidates.filter(x => x.stage === '待评估' && x.pid && !x.route).length
+          wb.aiStatus = { pendingCandidates: pendingAI, hint: pendingAI ? '有 ' + pendingAI + ' 人等待 AI 初筛（若长期不减少，检查 AI 网关额度/账号）' : '' }
+        } catch (e) {}
+        return new Response(JSON.stringify(wb), {
           status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
         })
       } catch (e) {
