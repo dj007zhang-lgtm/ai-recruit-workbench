@@ -305,6 +305,39 @@ export function apply(ctx, config = {}) {
     },
   }))
   dispose.push(ctx.webServer.register({
+    kind: 'exact', path: '/api/ai-recruiting/link-config',
+    handler: async (req, res) => {
+      // 面试官链接对外地址：查/改 publicBaseUrl（存数据目录 link-config.json，属部署配置非业务事实）
+      try {
+        const d = dataDir(); ensure(d)
+        const cfgFile = join(d, 'link-config.json')
+        const readCfg = () => { try { return JSON.parse(readFileSync(cfgFile, 'utf8')) } catch (e) { return {} } }
+        if (req.method === 'POST') {
+          const a = await readPost(req, res, 4 * 1024)
+          if (a === null) return
+          const v = String(a.publicBaseUrl || '').trim().replace(/\/+$/, '')
+          if (v && !/^https?:\/\//i.test(v)) return replyJson(res, 400, { ok: false, error: '请填写完整地址，以 http:// 或 https:// 开头' })
+          writeFileSync(cfgFile, JSON.stringify({ publicBaseUrl: v }, null, 2))
+          replyJson(res, 200, { ok: true, saved: true, current: v || (function () { try { return ctx.webServer.getOrigin() } catch (e) { return '' } })() })
+          return
+        }
+        const saved = String(readCfg().publicBaseUrl || '').trim()
+        let localOrigin = ''
+        try { localOrigin = String(ctx.webServer.getOrigin() || '') } catch (e) {}
+        const port = (localOrigin.match(/:(\d+)$/) || [])[1] || ''
+        const lan = lanAddresses().map(ip => 'http://' + ip + (port ? ':' + port : ''))
+        replyJson(res, 200, {
+          ok: true,
+          saved,
+          localOrigin,
+          effective: saved || localOrigin,
+          lan,
+          hint: saved ? '已配置对外地址，生成的链接可直接发给远程面试官' : (lan.length ? '未配置对外地址：本机可用；同 WiFi 的同事可用 ' + lan[0] : '未配置对外地址'),
+        })
+      } catch (e) { replyJson(res, 500, { ok: false, error: String(e && e.message || e) }) }
+    },
+  }))
+  dispose.push(ctx.webServer.register({
     kind: 'exact', path: '/api/ai-recruiting/batch-invite-interviewer',
     handler: async (req, res) => {
       // 批量转发给面试官：为一批「待初试」候选人生成协作链接（每人一个 token），供一次性转发。
@@ -321,10 +354,7 @@ export function apply(ctx, config = {}) {
         const place = String(a.place || '')
         // 关键：不能用前端 window.location.origin（DSH 桌面端是 dsh-app://app 自定义协议，浏览器打不开）。
         // webServer.getOrigin() 返回真实 HTTP 监听地址（如 http://127.0.0.1:55050）。
-        let baseUrl = ''
-        try { baseUrl = ctx.webServer.getOrigin() } catch (e) { baseUrl = '' }
-        if (!baseUrl) baseUrl = String(a.baseUrl || '').replace(/\/+$/, '')
-        baseUrl = String(baseUrl).replace(/\/+$/, '')
+        const baseUrl = publicOrigin() || String(a.baseUrl || '').replace(/\/+$/, '')
         const out = []
         for (const cid of ids) {
           const c = s.byId[cid]
@@ -394,7 +424,7 @@ export function apply(ctx, config = {}) {
           ? config.dataDir
           : join((ctx.workingDirectory && ctx.workingDirectory.defaultDirectory) || process.cwd(), 'recruiting')
         ensure(d)
-        let _origin = ''; try { _origin = ctx.webServer.getOrigin() } catch (e) {}
+        const _origin = publicOrigin()
         const wb = workbenchData(d, cid, buildDashboard, { period, origin: _origin })
         // AI 通道状态（不做真实调用；由 /llm-probe 主动探测，或由最近一次评估失败推断）
         try {
@@ -521,6 +551,44 @@ export function apply(ctx, config = {}) {
       } catch (e) { return new Response(JSON.stringify({ error: String(e && e.message || e) }), { status: 500 }) }
     },
   }))
+  // 对外可访问地址解析（面试官链接用）：
+  //   ① 配置 config.publicBaseUrl（内网穿透/公网域名，如 https://abc.ngrok.io）
+  //   ② 否则 webServer.getOrigin()（本机 HTTP，如 http://127.0.0.1:63582）
+  // 存在理由：DSH 桌面端前端 origin 是 dsh-app://app（Electron 私有协议，浏览器打不开），
+  // 必须由后端给出真实 HTTP 地址；远程面试官还需要公网地址，故支持配置覆盖。
+  function publicOrigin() {
+    // ① 插件配置（部署时写在 cordis.patch.yml）
+    const cfg = (config && String(config.publicBaseUrl || '').trim()) || ''
+    if (cfg) return cfg.replace(/\/+$/, '')
+    // ② 运行时配置（界面里填的内网穿透/公网地址，存数据目录）
+    try {
+      const d = dataDir()
+      const f2 = join(d, 'link-config.json')
+      if (existsSync(f2)) {
+        const j = JSON.parse(readFileSync(f2, 'utf8'))
+        const v = String((j && j.publicBaseUrl) || '').trim()
+        if (v) return v.replace(/\/+$/, '')
+      }
+    } catch (e) {}
+    // ③ 本机 HTTP 监听地址
+    try { return String(ctx.webServer.getOrigin() || '').replace(/\/+$/, '') } catch (e) { return '' }
+  }
+
+  // 局域网候选地址（同 WiFi 下同事可直接访问；仅当未配置公网地址时提示用）
+  function lanAddresses() {
+    const out = []
+    try {
+      const os = require('node:os')
+      const nets = os.networkInterfaces()
+      for (const name of Object.keys(nets)) {
+        for (const ni of (nets[name] || [])) {
+          if (ni.family === 'IPv4' && !ni.internal) out.push(ni.address)
+        }
+      }
+    } catch (e) {}
+    return out
+  }
+
   // 关岗前影响面：列出该职位在途候选人
   dispose.push(ctx.webServer.register({
     kind: 'exact', path: '/api/ai-recruiting/reevaluate-progress',

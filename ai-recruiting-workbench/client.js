@@ -364,6 +364,19 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = React.useState(false)
       const [links, setLinks] = React.useState(null)
       const [msg, setMsg] = React.useState('')
+      const [linkCfg, setLinkCfg] = React.useState(null)
+      const [showLinkCfg, setShowLinkCfg] = React.useState(false)
+      const [linkInput, setLinkInput] = React.useState('')
+      React.useEffect(() => {
+        api('/api/ai-recruiting/link-config').then(j => { if (j && j.ok) { setLinkCfg(j); setLinkInput(j.saved || '') } }).catch(() => {})
+      }, [])
+      const saveLinkCfg = async () => {
+        try {
+          const j = await api('/api/ai-recruiting/link-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ publicBaseUrl: linkInput }) })
+          if (j && j.ok) { setMsg('已保存链接地址'); setShowLinkCfg(false); const k = await api('/api/ai-recruiting/link-config'); if (k && k.ok) setLinkCfg(k) }
+          else setMsg('保存失败：' + ((j && j.error) || '未知'))
+        } catch (e) { setMsg('保存失败：' + String(e.message || e)) }
+      }
       // 待初试 + 初试中（已发但还没排期的）都可用于转发
       const pool = (data.candidates || []).filter(c => ['待初试', '初试中'].indexOf(c.stage) >= 0)
       const toggle = (id) => setPicked(v => v.indexOf(id) >= 0 ? v.filter(x => x !== id) : v.concat([id]))
@@ -409,6 +422,15 @@ window.__ModuleLoader__.load({
                 h('span', { style: { fontSize: 10, color: C.muted } }, c.stage),
                 hasAv ? h('span', { style: { fontSize: 9.5, color: C.good, background: tint(C.good, .12), borderRadius: 5, padding: '0 5px' } }, '已回时间') : null)
             })),
+          // 链接地址配置：面试官能否打开取决于这里（本机/局域网/公网）
+          h('div', { style: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8, padding: '6px 9px', background: C.surface, borderRadius: 7 } },
+            h('span', { style: { fontSize: 10.5, color: C.muted } }, '链接地址'),
+            h('span', { style: { fontSize: 10.5, fontWeight: 600, color: linkCfg ? C.good : C.warn } }, linkCfg ? (linkCfg.effective || '') : '加载中…'),
+            h('button', { type: 'button', style: { ...btn, padding: '1px 7px', fontSize: 10 }, onClick: () => setShowLinkCfg(v => !v) }, '设置'),
+            linkCfg && !linkCfg.saved && linkCfg.lan && linkCfg.lan.length ? h('span', { style: { fontSize: 9.5, color: C.muted } }, '· 同 WiFi 可用 ' + linkCfg.lan[0]) : null),
+          showLinkCfg ? h('div', { style: { display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' } },
+            h('input', { style: { ...input, flex: 1, minWidth: 200 }, placeholder: 'https://your-tunnel.ngrok.io（内网穿透/公网地址，留空=本机）', value: linkInput, onChange: e => setLinkInput(e.target.value) }),
+            h('button', { type: 'button', style: { ...btn, padding: '5px 10px', fontSize: 11 }, onClick: saveLinkCfg }, '保存')) : null,
           h('div', { style: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' } },
             h('button', { type: 'button', style: primary, disabled: busy, onClick: run }, busy ? '生成中…' : '生成协作链接（' + picked.length + '）'),
             links && links.length ? h('button', { type: 'button', style: { ...btn }, onClick: copyAll }, '📋 复制全部链接') : null,
