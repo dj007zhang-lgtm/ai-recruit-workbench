@@ -47,7 +47,9 @@ const daysBetween = (a, b) => Math.max(0, Math.round((new Date(b).getTime() - ne
  *  - cycle：平均处理周期（接入→进面试 / 接入→终态）
  *  - sourceQuality：渠道质量（总量 × 通过率）
  */
-export function buildDashboard(d) {
+export function buildDashboard(d, opts) {
+  opts = opts || {}
+  const PERIOD = opts.period === 'week' || opts.period === 'month' ? opts.period : 'all'
   if (!existsSync(d)) mkdirSync(d, { recursive: true })
   const ps = readJSON(join(d, 'positions.json'), [])
   const cs = readRows(join(d, 'candidates.jsonl'))
@@ -302,6 +304,41 @@ export function buildDashboard(d) {
   const passTotal = reached.screened, passOk = reached.passed  // 漏斗环节仍用通过数；淘汰数单列
   const passRate = passTotal ? Math.round(passOk / passTotal * 100) : null
   const needConfirm = cs.filter(c => ['待发 Offer'].indexOf(c.stage) >= 0).length
+  // ===== 周期口径：流量指标 = 快照差分（本周期末累计 − 上周期末累计），环比 = 同长度上一周期 =====
+  const PDAYS = PERIOD === 'week' ? 7 : PERIOD === 'month' ? 30 : 0
+  const mrowsAll = readRows(join(d, 'metrics.jsonl')).sort((a, b) => String(a.date).localeCompare(String(b.date)))
+  const latestM = mrowsAll[mrowsAll.length - 1] || null
+  const cutFor = (days, offset) => {
+    const dl = new Date(Date.now() - (days + offset) * 86400000).toISOString().slice(0, 10)
+    let last = null
+    for (const m of mrowsAll) if (String(m.date) <= dl) last = m
+    return last
+  }
+  // 周期起点前最后快照 / 上一周期起点前最后快照
+  const startSnap = PERIOD === 'all' ? null : cutFor(PDAYS, 0)
+  const prevStartSnap = PERIOD === 'all' ? null : cutFor(PDAYS, PDAYS)
+  const flowDiff = (key, a, b) => (a && a[key] != null && b && b[key] != null) ? (a[key] - b[key]) : null
+  const flow = {
+    intake: PERIOD === 'all' ? null : flowDiff('candidates', latestM, startSnap),
+    screened: PERIOD === 'all' ? null : flowDiff('evaluated', latestM, startSnap),
+    interview: PERIOD === 'all' ? null : flowDiff('pipeline', latestM, startSnap, 'interview'),
+    hired: PERIOD === 'all' ? null : flowDiff('hired', latestM, startSnap),
+  }
+  // pipeline 差分需要按 id 取
+  const pipeDiff = (id, a, b) => {
+    const pa = a && (a.pipeline || []).find(x => x.id === id)
+    const pb = b && (b.pipeline || []).find(x => x.id === id)
+    return (pa && pb && pa.count != null && pb.count != null) ? (pa.count - pb.count) : null
+  }
+  flow.interview = PERIOD === 'all' ? null : pipeDiff('interview', latestM, startSnap)
+  flow.offer = PERIOD === 'all' ? null : pipeDiff('offer', latestM, startSnap)
+  flow.passed = PERIOD === 'all' ? null : pipeDiff('passed', latestM, startSnap)
+  // 上一周期环比
+  const prevFlow = {
+    intake: PERIOD === 'all' ? null : flowDiff('candidates', startSnap, prevStartSnap),
+    interview: PERIOD === 'all' ? null : pipeDiff('interview', startSnap, prevStartSnap),
+  }
+  const periodLabel = PERIOD === 'week' ? '本周' : PERIOD === 'month' ? '本月' : '累计'
   const weekNew = cnt(cur, '接入')
   const prevNew = cnt(prev, '接入')
 
@@ -370,7 +407,8 @@ export function buildDashboard(d) {
   // 兼容：附加次要 KPI（小字排展示）
   const kpisMinor = [
     K('candidates', '候选人总量', cs.length, prevSnap ? prevSnap.candidates : null, '人', '全库'),
-    K('intake', '本周新增', weekNew, prevNew, '份', '近 7 天'),
+    K('intake', periodLabel + '新增', PERIOD === 'all' ? weekNew : (flow.intake != null ? Math.max(0, flow.intake) : weekNew),
+      PERIOD === 'all' ? prevNew : prevFlow.intake, '份', PERIOD === 'all' ? '近 7 天' : (periodLabel + '流量 · 环比上' + (PERIOD === 'week' ? '周' : '月'))),
     K('screenFail', 'AI 初筛淘汰', reached.failed, null, '份', reached.screened ? ('挡掉 ' + reached.failed + '/' + reached.screened + ' 份 · 免人工筛') : '免人工筛'),
     K('pending', '待人工拍板', needConfirm, prevSnap ? prevSnap.pendingDecision : null, '人', '必须人给结论'),
     K('autoRate', '免人工率', autoRate, prevSnap && prevSnap.autoRate != null ? prevSnap.autoRate : null, '%', '执行环节'),
@@ -416,6 +454,7 @@ export function buildDashboard(d) {
   return {
     generatedAt: new Date().toISOString(),
     period: { current: `${curStart} ~ ${today}`, previous: `${prevStart} ~ ${prevEnd}` },
+    periodMode: PERIOD, periodLabel,
     dataDir: d,
     baseline: prevSnap ? `对比 ${prevSnap.date} 快照与上一周期事件` : '首日基线已建立，环比将在后续累积',
     kpis, kpisMinor, pipeline, cycle, sourceQuality,

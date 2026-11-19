@@ -55,11 +55,11 @@ export function positionImpact(d, positionId) {
 }
 
 /** 工作台一次拉取所需的全部数据：看板 + 收件箱 + 选中候选人详情 + 因果链 + 规范版本。 */
-export function workbenchData(d, candidateId, buildDashboard) {
+export function workbenchData(d, candidateId, buildDashboard, opts) {
   if (!existsSync(d)) mkdirSync(d, { recursive: true })
   migrateLegacy(d)
   const s = fold(d)
-  const dashboard = buildDashboard(d)
+  const dashboard = buildDashboard(d, opts)
   const items = s.inbox.map(x => ({ ...x, name: x.name || (s.byId[x.id] || {}).name || x.id }))
   const selectedId = candidateId || (items[0] || {}).id || (s.candidates[0] || {}).id || null
   const c = selectedId ? s.byId[selectedId] : null

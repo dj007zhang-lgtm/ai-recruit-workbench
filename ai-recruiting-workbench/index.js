@@ -332,11 +332,12 @@ export function apply(ctx, config = {}) {
       try {
         const url = new URL(request.url)
         const cid = url.searchParams.get('candidateId') || null
+        const period = url.searchParams.get('period') || 'all'
         const d = config && config.dataDir
           ? config.dataDir
           : join((ctx.workingDirectory && ctx.workingDirectory.defaultDirectory) || process.cwd(), 'recruiting')
         ensure(d)
-        return new Response(JSON.stringify(workbenchData(d, cid, buildDashboard)), {
+        return new Response(JSON.stringify(workbenchData(d, cid, buildDashboard, { period })), {
           status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
         })
       } catch (e) {

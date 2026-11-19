@@ -1,6 +1,6 @@
 # AI 招聘工作台
 
-基于 DeepSeek Harness 的 AI 招聘插件：简历接入即分流（AI 初筛·BARS 逐维判档）、全流程看板、面试 Copilot、校准闭环。数据全部本地（事件账本），候选人信息不进 Git。
+基于 DeepSeek Harness 的 AI 招聘插件：简历接入即分流（AI 初筛·BARS 逐维判档）、全流程看板、面试 Copilot、校准闭环。数据全部本地（事件账本），候选人信息不进 Git。数据目录 `recruiting/` 本地生成，不入库。
 
 ## 快速开始
 
@@ -19,9 +19,6 @@ mkdir -p ~/.dsh/profiles/desktop/node_modules/@local
 ln -s "$(pwd)/ai-recruiting-workbench" ~/.dsh/profiles/desktop/node_modules/@local/ai-recruiting-workbench
 
 # 4. 重启 DeepSeek Harness → 左侧「AI 招聘工作台」出现即成功
-
-# 5.（可选）生成假数据演示，勿放真实简历（需 Node）
-node scripts/make_fake_data.mjs
 ```
 
 ## 已知限制

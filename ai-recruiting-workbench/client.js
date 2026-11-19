@@ -297,16 +297,17 @@ window.__ModuleLoader__.load({
     }
     const postAction = (body) => api(ACTION, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 
-    function useWorkbench(sel) {
+    function useWorkbench(sel, period) {
       const [data, setData] = React.useState(null)
       const [error, setError] = React.useState('')
       const [busy, setBusy] = React.useState(false)
       const load = () => {
         setBusy(true)
-        const q = sel ? '?candidateId=' + encodeURIComponent(sel) : ''
+        const qp = period && period !== 'all' ? '&period=' + encodeURIComponent(period) : ''
+        const q = (sel ? '?candidateId=' + encodeURIComponent(sel) : '?') + qp
         api(API + q).then(j => { setData(j); setError('') }).catch(e => setError(String(e.message || e))).finally(() => setBusy(false))
       }
-      React.useEffect(() => { load(); const id = setInterval(load, 25000); return () => clearInterval(id) }, [sel])
+      React.useEffect(() => { load(); const id = setInterval(load, 25000); return () => clearInterval(id) }, [sel, period])
       return { data, error, busy, reload: load }
     }
 
@@ -857,10 +858,10 @@ window.__ModuleLoader__.load({
         err ? h('div', { style: { fontSize: 11.5, color: C.bad, marginBottom: 6 } }, err) : null,
         prep ? h('div', null,
           (prep.mustVerify || []).length ? h('div', { style: { marginBottom: 8 } },
-            sec('① 必须当面验证（来自 AI 初筛疑点）', C.bad),
+            sec('① 必须当面验证', C.bad),
             ...prep.mustVerify.map((x, i) => h('div', { key: i, style: { fontSize: 11.5, padding: '3px 0', lineHeight: 1.5 } }, '· ' + x))) : null,
           (prep.questions || []).length ? h('div', { style: { marginBottom: 8 } },
-            sec('② 建议追问（按 BARS 维度，针对简历具体表述）', C.accent),
+            sec('② 建议追问', C.accent),
             ...prep.questions.map((q, i) => h('div', { key: i, style: { background: C.surface, borderRadius: 8, padding: '6px 9px', marginBottom: 4 } },
               h('div', { style: { display: 'flex', gap: 6 } },
                 h('span', { style: { fontSize: 10.5, color: '#fff', background: C.accent, borderRadius: 6, padding: '0 5px', flex: 'none', alignSelf: 'flex-start', marginTop: 1 } }, q.dim || '通用'),
@@ -883,7 +884,7 @@ window.__ModuleLoader__.load({
             draft ? h('button', { type: 'button', style: { ...primary, background: 'rgba(18,160,106,.9)' }, disabled: busy, onClick: submitDraft }, busy ? '入库中…' : '✓ 确认并入库面评') : null,
             h('button', { type: 'button', style: btn, onClick: onCancel }, '关闭'))),
         draft ? h('div', { style: { marginTop: 8, background: 'rgba(18,160,106,.06)', border: '1px solid rgba(18,160,106,.3)', borderRadius: 9, padding: '9px 11px' } },
-          h('div', { style: { fontSize: 11.5, fontWeight: 700, color: C.good, marginBottom: 5 } }, '面评草稿（AI 建议，待你确认）'),
+          h('div', { style: { fontSize: 11.5, fontWeight: 700, color: C.good, marginBottom: 5 } }, '面评草稿 · 待你确认'),
           ...(draft.dims || []).map((x, i) => h('div', { key: i, style: { fontSize: 11.5, marginBottom: 3, lineHeight: 1.5 } },
             h('b', null, x.dim + '：'), h('span', { style: { color: C.accent, fontWeight: 700 } }, ' ' + x.level + ' '), h('span', { style: { color: C.muted } }, x.evidence ? '（' + x.evidence + '）' : ''))),
           draft.summary ? h('div', { style: { fontSize: 11.5, color: C.muted, marginTop: 4 } }, '总结：' + draft.summary) : null,
@@ -979,7 +980,7 @@ window.__ModuleLoader__.load({
         } }, '生成邀约文案'))
         if (genText) body.push(h('div', { style: { border: '1px solid rgba(47,107,255,.4)', background: 'rgba(47,107,255,.07)', borderRadius: 10, marginTop: 6, overflow: 'hidden' } },
           h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderBottom: '1px solid rgba(47,107,255,.25)' } },
-            h('span', { style: { fontSize: 11.5, color: C.accent, fontWeight: 700 } }, '📋 邀约预览 · 可直接粘贴'),
+            h('span', { style: { fontSize: 11.5, color: C.accent, fontWeight: 700 } }, '📋 邀约预览'),
             h('button', { type: 'button', style: { ...btn, padding: '2px 10px', fontSize: 11.5, background: copied ? 'rgba(18,160,106,.2)' : 'transparent', color: copied ? C.good : C.accent, borderColor: copied ? 'transparent' : C.accent }, onClick: () => { try { navigator.clipboard.writeText(genText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch (e) {} } }, copied ? '✓ 已复制' : '复制')),
           h('pre', { style: { fontSize: 11.5, lineHeight: 1.8, whiteSpace: 'pre-wrap', padding: '10px 12px', margin: 0 } }, genText),
           (function () {
@@ -1039,7 +1040,7 @@ window.__ModuleLoader__.load({
           h('label', { style: { fontSize: 11.5, color: C.muted } }, '结论',
             h('select', { style: input2, value: f.pass ? '1' : '0', onChange: e => set('pass', e.target.value === '1') }, h('option', { value: '1' }, '通过'), h('option', { value: '0' }, '不通过')))))
         body.push(h('div', { style: { background: 'rgba(47,107,255,.06)', borderRadius: 8, padding: '7px 9px', marginBottom: 8 } },
-          h('div', { style: { fontSize: 11.5, color: C.muted, marginBottom: 4 } }, '💰 薪资证据（进复试时采集，用于该岗位薪酬建议校准——你至少得出到这个数才招得到）'),
+          h('div', { style: { fontSize: 11.5, color: C.muted, marginBottom: 4 } }, '💰 薪资证据'),
           h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 } },
             fld('现薪/期望月薪 (K)', 'currentSalary', '如 20'),
             fld('备注（现司/职级）', 'salaryNote', '如 现司 18K·14薪'))))
@@ -1203,8 +1204,8 @@ window.__ModuleLoader__.load({
                 h('div', { style: { fontSize: 11.5, marginBottom: 5 } }, h('b', null, '判定依据')),
                 evKeys.length
                   ? h('div', { style: { marginBottom: 4 } }, ...evKeys.slice(0, 4).map(k2 => h('div', { key: k2, style: { fontSize: 11.5, color: C.muted, marginTop: 2, lineHeight: 1.5 } }, '· ' + k2 + '：' + String(ev[k2]).slice(0, 70))))
-                  : h('div', { style: { fontSize: 11.5, color: C.muted, marginBottom: 4 } }, '· 依据各维度的 BARS 档位判定（详见「适配性诊断」逐维对齐）'),
-                und.length ? h('div', { style: { fontSize: 11.5, color: C.warn, marginTop: 3, lineHeight: 1.6 } }, '⚠ 这些维度简历里没有可引用的事实，无法判断（按 0 计、不脑补）：' + und.join('、') + '。请向候选人索取对应经历或安排面试核实后再判断。') : null,
+                  : h('div', { style: { fontSize: 11.5, color: C.muted, marginBottom: 4 } }, '· 依据各维度 BARS 档位判定'),
+                und.length ? h('div', { style: { fontSize: 11.5, color: C.warn, marginTop: 3, lineHeight: 1.6 } }, '⚠ 这些维度简历里没有可引用的事实，无法判断：' + und.join('、') + '。请向候选人索取对应经历或安排面试核实后再判断。') : null,
                 h('div', { style: { fontSize: 10.5, color: C.muted, marginTop: 5, paddingTop: 4, borderTop: '1px solid ' + C.border } }, '可追溯、可复现'),
               ]
             })()),
@@ -1218,7 +1219,7 @@ window.__ModuleLoader__.load({
                 h('span', null, g.gate + '：'), h('span', { style: { color: C.muted } }, g.reason))
             })) : null,
           (c.doubts || []).length ? h('div', { style: { fontSize: 11.5, color: C.warn, marginTop: 5 } }, '疑点（建议面试核实）：' + c.doubts.join(' / ')) : null,
-          h('button', { type: 'button', style: { ...btn, padding: '1px 8px', fontSize: 11.5, marginTop: 8 }, onClick: () => setWhy(v => !v) }, why ? '收起流转记录' : '查看流转记录（谁在何时做了什么）'),
+          h('button', { type: 'button', style: { ...btn, padding: '1px 8px', fontSize: 11.5, marginTop: 8 }, onClick: () => setWhy(v => !v) }, why ? '收起流转记录' : '查看流转记录'),
           why ? (function () {
             const TYPE_CN = { 'assessment.recorded': 'AI 完成评估', 'decision.made': '人工做出判断', 'stage.advanced': '推进阶段', 'invite.sent': '发送邀约', 'feedback.submitted': '提交面评', 'candidate.bound': '绑定岗位', 'salary.advised': '生成薪酬建议', 'background.check': '背景调查', 'offer.sent': '发出 Offer', 'offer.accepted': 'Offer 接受', 'offer.declined': 'Offer 拒绝', 'hire.confirmed': '确认入职' }
             const tl = (detail.timeline || []).filter(e2 => TYPE_CN[e2.type]).slice(-8)
@@ -1263,7 +1264,7 @@ window.__ModuleLoader__.load({
         const gatePend = gr2.filter(x => x.verdict !== 'pass' && x.verdict !== 'fail')
         const passN = (gr2.filter(g => g.verdict === 'pass').length) + (sf && sf.fit === 'match' ? 1 : 0) + ((gap2.rate || 0) >= 50 ? 1 : 0)
         out.push(h('details', { style: { ...card, marginBottom: 9, padding: '9px 13px' } },
-          h('summary', { style: { cursor: 'pointer', fontSize: 11.5, color: C.muted, userSelect: 'none' } }, '▸ 校验链 · 四道机器校验（' + passN + '/4 通过）'),
+          h('summary', { style: { cursor: 'pointer', fontSize: 11.5, color: C.muted, userSelect: 'none' } }, '▸ 校验链 · ' + passN + '/4 通过'),
           h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 } },
             item('硬门槛', gr2.length ? (gateFail.length ? false : gatePend.length ? null : true) : null,
               gr2.length ? (gateFail.length ? '未过：' + gateFail.map(x => x.gate).join('、') : gatePend.length ? '待核 ' + gatePend.length + ' 项' : '全部通过') : '无门槛'),
@@ -1272,7 +1273,7 @@ window.__ModuleLoader__.load({
             item('技能匹配', gap2.rate == null ? null : gap2.rate >= 50, gap2.rate == null ? '无岗位需求' : gap2.rate + '% · 缺 ' + ((gap2.missing || []).length) + ' 项'),
             item('JD 合规', comp ? comp.score >= 85 : null, comp ? comp.score + ' 分 · ' + comp.summary : '未评估'))))
       })
-      const calBtn = h('button', { type: 'button', style: btn, onClick: () => setPanel(panel === 'cal' ? null : 'cal') }, '改判（校准）')
+      const calBtn = h('button', { type: 'button', style: btn, onClick: () => setPanel(panel === 'cal' ? null : 'cal') }, '改判')
       const elimBtn = h('button', { type: 'button', style: danger, onClick: () => setPanel(panel === 'elim' ? null : 'elim') }, '淘汰')
       const offerBtn = h('button', { type: 'button', style: danger, onClick: () => setPanel(panel === 'offer' ? null : 'offer') }, 'Offer')
       if (c.unlinked && binding) seg('绑定岗位', () => out.push(h('div', { style: { ...card, borderColor: C.accent, marginBottom: 9, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
@@ -1325,14 +1326,14 @@ window.__ModuleLoader__.load({
       const flow = {
         '待评估': [['adopt', '✓ 采纳 AI 建议 · 进初试'], ELIM],
         '已评估': [['adopt', '✓ 采纳 · 进初试'], ELIM],
-        '待初试': [['invite', '发初试邀约（含排期）'], ELIM],
+        '待初试': [['invite', '发初试邀约'], ELIM],
         '初试中': [['copilot', '🎯 面试准备'], ['feedback', '录初试面评'], ELIM],
         '待复试': [['interview', '安排复试'], ELIM],
         '复试中': [['copilot', '🎯 面试准备'], ['feedback', '录复试面评'], ELIM],
         '待背调': [['flow:backcheck', '录入背调结论'], ELIM],
         'Offer已发': [['flow:accept', '候选人已接受'], ['flow:decline', '被拒 / 放弃'], ELIM],
         'Offer已接受': [['flow:onboard', '安排入职'], ELIM],
-        '待入职': [['flow:hire', '确认入职（已报到）'], ELIM],
+        '待入职': [['flow:hire', '确认入职'], ELIM],
         '人才库': [['activate', '重新激活']], '已淘汰': [['activate', '重新激活']],
       }[c.stage] || []
       if (flow.length) seg('流程动作', () => out.push(h(Block, { title: '流程动作' },
@@ -1370,10 +1371,10 @@ window.__ModuleLoader__.load({
             rd ? h('span', { style: { fontSize: 11.5, color: rd.score >= 80 ? C.good : rd.score >= 60 ? C.warn : C.bad } }, 'ATS 可读性 ' + rd.score + ' 分') : null,
             ocrFlag ? h('span', { style: { fontSize: 11.5, padding: '1px 7px', borderRadius: 9, background: 'rgba(168,85,247,.14)', color: '#c084fc' } }, '⚡ Vision OCR 文本化') : null),
           sk.length ? h('div', { style: { marginBottom: 4 } },
-            h('div', { style: { fontSize: 11.5, color: C.muted, marginBottom: 3 } }, '候选人技能（' + sk.length + '）'),
+            h('div', { style: { fontSize: 11.5, color: C.muted, marginBottom: 3 } }, '候选人技能 · ' + sk.length),
             ...sk.slice(0, 14).map(x => chip(x.name, C.good, 'rgba(18,160,106,.10)'))) : null,
           (gap.missing || []).length ? h('div', { style: { marginTop: 4 } },
-            h('div', { style: { fontSize: 11.5, color: C.muted, marginBottom: 3 } }, '岗位要求但简历未见（' + gap.missing.length + '）'),
+            h('div', { style: { fontSize: 11.5, color: C.muted, marginBottom: 3 } }, '待补技能 · ' + gap.missing.length),
             ...gap.missing.slice(0, 10).map(x => chip(x.name, C.warn, 'rgba(217,138,11,.10)'))) : null,
           rd && rd.issues && rd.issues.length ? h('div', { style: { fontSize: 11.5, color: C.muted, marginTop: 4 } }, '排版提示：' + rd.issues.slice(0, 3).join('；')) : null))
       })
@@ -1381,7 +1382,7 @@ window.__ModuleLoader__.load({
         h('button', { type: 'button', style: { ...btn, width: '100%' }, onClick: () => setShowResume(v => !v) }, showResume ? '收起' : '展开'),
         showResume ? h('div', { style: { marginTop: 7 } }, h(ResumeView, { text: c.resume, maxH: 420 })) : null)))
       seg('影响面', () => out.push(h(Block, { title: '影响面' }, h('div', { style: { fontSize: 11.5, color: C.muted } }, detail.impact ? detail.impact.summary : '—'))))
-      out.push(h('button', { type: 'button', style: { ...btn, marginTop: 8, width: '100%' }, onClick: () => onOpenLog && onOpenLog() }, '查看完整工作日志（' + (detail.timeline || []).length + ' 条流转）→'))
+      out.push(h('button', { type: 'button', style: { ...btn, marginTop: 8, width: '100%' }, onClick: () => onOpenLog && onOpenLog() }, '查看完整工作日志 →'))
       return h('div', null, ...out)
     }
 
@@ -1631,7 +1632,7 @@ window.__ModuleLoader__.load({
       const closedList = list.filter(p => (p.status || '在招') !== '在招')
       const listView = h('div', null,
         h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 } },
-          h('b', null, '职位库（' + list.length + '）'),
+          h('b', null, '职位库 · ' + list.length),
           h('div', { style: { display: 'flex', gap: 6 } },
             h('button', { type: 'button', style: primary, onClick: () => { setEditingId(null); setF(EMPTY); setJdObj(null); setJdMd(''); setScObj(null); setScMd(''); setView('new'); setMsg('') } }, '＋ 新建职位'),
             h('button', { type: 'button', style: { ...btn }, onClick: () => { setImportOpen(v => !v); setImportMsg('') } }, '📄 导入 JD'))),
@@ -1641,7 +1642,7 @@ window.__ModuleLoader__.load({
           return closable ? h('div', { style: { fontSize: 11.5, color: C.good, marginBottom: 6 } }, '✓ 有 ' + closable + ' 个职位已满编且无在途，建议关闭（关闭后可随时重新开放）') : null
         })(),
         importOpen ? h('div', { style: { ...card, borderColor: C.accent, marginBottom: 9 } },
-          h('div', { style: { fontSize: 11.5, fontWeight: 700, marginBottom: 5 } }, '导入 JD（文件 / 文字 / 链接）'),
+          h('div', { style: { fontSize: 11.5, fontWeight: 700, marginBottom: 5 } }, '导入 JD'),
           h('div', { style: { fontSize: 11.5, color: C.muted, marginBottom: 6 } }, '三种方式：① 上传文件（PDF/Word/图片扫描件自动识别）② 粘贴 JD 文字 ③ 粘贴职位链接（招聘网站详情页自动渲染）→ AI 抽取字段并清洗出职责与要求 → 你核对后保存'),
           h('div', { style: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' } },
             h('label', { style: { ...primary, padding: '4px 12px', fontSize: 11.5, display: 'inline-block', cursor: 'pointer' } }, importBusy ? '解析中…' : '选择文件',
@@ -1673,7 +1674,7 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', style: btn, onClick: () => { setView('list'); setMsg(''); setEditingId(null) } }, '← 返回列表'),
           h('b', null, editingId ? '编辑职位' : '新建职位')),
         h('div', { style: { marginBottom: 8 } },
-          h('label', { style: { fontSize: 11.5, color: C.muted, display: 'block', marginBottom: 3 } }, '参考已有职位（可选：复用其门槛/能力项/薪资）'),
+          h('label', { style: { fontSize: 11.5, color: C.muted, display: 'block', marginBottom: 3 } }, '参考已有职位'),
           h('select', { style: { ...input, width: 320 }, defaultValue: '', onChange: e => {
             const src3 = (positions || []).find(x => x.id === e.target.value)
             if (!src3) return
@@ -1729,19 +1730,19 @@ window.__ModuleLoader__.load({
                 h('div', null, '填好职位/城市/经验后点「⚡ 生成薪酬建议」。'),
                 h('div', { style: { fontSize: 11.5, marginTop: 4 } }, editingId ? '本次岗位的实招价与候选人现薪（同口径）会自动纳入参考并按优先级加权。' : '提示：新建职位尚未保存，暂无本岗位的实招/现薪数据；保存后再次生成可纳入同岗位口径的成交价与候选人现薪。'))),
         // 业务背景 / 迭代输入
-        h('label', { style: { fontSize: 11.5, color: C.muted, display: 'block', marginTop: 10 } }, '业务背景 / 变更点（AI 据此生成或迭代 JD）',
+        h('label', { style: { fontSize: 11.5, color: C.muted, display: 'block', marginTop: 10 } }, '业务背景 / 变更点',
           h('textarea', { style: { width: '100%', minHeight: 50, border: '1px solid ' + C.border, borderRadius: 7, padding: 7, fontSize: 11.5, boxSizing: 'border-box', background: 'transparent', color: 'inherit' },
             placeholder: '如：新开门店扩张、要求加强损耗管控、新增线上直播职责……（首次制定可留空）',
             value: f.businessContext, onChange: e => set('businessContext', e.target.value) })),
         // JD 区
         h('div', { style: { marginTop: 10, border: '1px solid ' + C.border, borderRadius: 9, padding: 10 } },
           h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, flexWrap: 'wrap', gap: 8 } },
-            h('b', { style: { fontSize: 12.5, whiteSpace: 'nowrap' } }, '岗位职责说明书（JD）'),
+            h('b', { style: { fontSize: 12.5, whiteSpace: 'nowrap' } }, '岗位 JD'),
             h('div', { style: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', flexShrink: 0 } },
               (!jdObj && jdRaw) ? h('span', { style: { fontSize: 10.5, padding: '1px 7px', borderRadius: 8, background: 'rgba(18,160,106,.12)', color: C.good } }, '已导入原文') : null,
               (jdObj && jdRaw) ? h('button', { type: 'button', style: btn, onClick: () => setRawView(v => !v) }, rawView ? '看结构化' : '看原文') : null,
               (jdObj || jdMd) ? h('button', { type: 'button', style: btn, onClick: () => setEditRaw(v => !v) }, editRaw ? '收起编辑' : '编辑') : null,
-              h('button', { type: 'button', style: { ...primary, whiteSpace: 'nowrap' }, disabled: genBusy, onClick: genJD }, genBusy ? '生成中…' : (jdObj ? '⚡ 重新生成/迭代' : (jdRaw ? '⚡ 把原文结构化（职责+KPI）' : '⚡ AI 生成岗位 JD')))),
+              h('button', { type: 'button', style: { ...primary, whiteSpace: 'nowrap' }, disabled: genBusy, onClick: genJD }, genBusy ? '生成中…' : (jdObj ? '⚡ 重新生成/迭代' : (jdRaw ? '⚡ 结构化为 JD' : '⚡ AI 生成岗位 JD')))),
           rawView && jdRaw
             ? h('textarea', { style: { width: '100%', minHeight: 240, maxHeight: 400, border: '1px solid ' + C.border, borderRadius: 7, padding: '8px 10px', fontSize: 11.5, boxSizing: 'border-box', background: 'transparent', color: 'inherit', fontFamily: 'inherit', lineHeight: 1.7, resize: 'vertical' }, value: jdRaw, onChange: e => setJdRaw(e.target.value) })
             : (jdObj || jdMd)
@@ -1755,7 +1756,7 @@ window.__ModuleLoader__.load({
         // 评分卡区（由 JD 派生）
         h('div', { style: { marginTop: 10, border: '1px solid ' + C.border, borderRadius: 9, padding: 10 } },
           h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 } },
-            h('b', { style: { fontSize: 12.5 } }, '初筛评分卡（双轨制 · 由 JD 派生）'),
+            h('b', { style: { fontSize: 12.5 } }, '初筛评分卡'),
             h('div', { style: { display: 'flex', gap: 6 } },
               h('button', { type: 'button', style: primary, disabled: scBusy, onClick: genScorecard }, scBusy ? '生成中…' : (scObj ? '⚡ 重新生成评分卡' : '⚡ 由 JD 生成评分卡')))),
           (scObj || scMd)
@@ -1836,14 +1837,14 @@ window.__ModuleLoader__.load({
               h('button', { type: 'button', style: { ...btn, padding: '1px 8px', fontSize: 10, marginLeft: 4 }, onClick: () => onGoto('settings') }, '去设置邮箱接入')))),
         h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
           h('div', { style: card },
-            h('div', { style: { fontSize: 11.5, fontWeight: 700, marginBottom: 4 } }, '分流结果（累计）'),
+            h('div', { style: { fontSize: 11.5, fontWeight: 700, marginBottom: 4 } }, '分流结果'),
             statRow('SA · 在初试流程', saFlow.length, C.accent, '当前在途'),
             statRow('B · 待你判断', bPending.length, C.warn, '需你看一眼'),
             statRow('C · 已淘汰入库', rejected.length, C.muted, '可激活复捞'),
             h('div', { style: { fontSize: 10.5, color: C.muted, marginTop: 6 } }, '上传后的简历已自动归位，不在这里堆积。'),
             bPending.length ? h('button', { type: 'button', style: { ...primary, padding: '6px 0', fontSize: 11.5, width: '100%', marginTop: 8 }, onClick: () => onGoto('process') }, '⚡ 去判断 ' + bPending.length + ' 份 B 级') : null),
           h('div', { style: card },
-            h('div', { style: { fontSize: 11.5, fontWeight: 700, marginBottom: 4 } }, '待分配岗位（' + unlinked.length + '）'),
+            h('div', { style: { fontSize: 11.5, fontWeight: 700, marginBottom: 4 } }, '待分配岗位 · ' + unlinked.length),
             h('div', { style: { fontSize: 10, color: C.muted, lineHeight: 1.6, marginBottom: 7 } }, '这些简历未匹配到明确岗位。你只需为它们选一个岗位，选完 AI 会自动初筛并分流。'),
             !unlinked.length
               ? h('div', { style: { fontSize: 11.5, color: C.muted } }, '暂无待分配简历')
@@ -1865,7 +1866,7 @@ window.__ModuleLoader__.load({
         catch (e) { setMsg('失败：' + e.message) }
         setBusy(false)
       }
-      return h(Block, { title: '邮箱收信（IMAP / POP3）' },
+      return h(Block, { title: '邮箱接入' },
         h('div', { style: { fontSize: 10.5, color: C.muted, marginBottom: 8, lineHeight: 1.6 } }, '邮箱只是载体：收信时按发件人/主题/文件名自动归因真实渠道（BOSS直聘/猎聘/智联等），未识别的用下方默认来源。'),
         h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 8 } },
           h('label', { style: { fontSize: 11.5, color: C.muted } }, '协议',
@@ -2097,7 +2098,7 @@ window.__ModuleLoader__.load({
       const od = (dash.overdue || [])
       if (od.length) out.push(h('div', { style: { ...card, borderColor: C.warn, background: 'rgba(245,158,11,.06)', marginBottom: 10, padding: '9px 12px' } },
         h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 } },
-          h('b', { style: { fontSize: 12.5, color: C.warn } }, '⏰ 超时未动（流失风险 ' + od.length + '）'),
+          h('b', { style: { fontSize: 12.5, color: C.warn } }, '⏰ 超时未动 · ' + od.length + ' 人'),
           h('span', { style: { fontSize: 11.5, color: C.muted } }, '按业务等待上限判定：待初试>3天 / 待发Offer>2天 / 面试中>5天')),
         ...od.slice(0, 5).map(o => h('div', { key: o.id, onClick: () => { setSel(o.id); onGoto('process') }, style: { display: 'flex', gap: 8, fontSize: 11.5, padding: '3px 0', cursor: 'pointer' } },
           h('span', { style: { fontWeight: 700 } }, o.name),
@@ -2113,7 +2114,7 @@ window.__ModuleLoader__.load({
       const maxSq = Math.max.apply(null, sq.map(x => x.total).concat([1]))
       const bar = (name, count, delta2, max, color) => h(BarRow, { key: name, name, count, delta: delta2, max, color })
       analysisParts.push(h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 10, marginTop: 12 } },
-        h('div', { style: card }, h('div', { style: sec }, '渠道端到端转化（简历 → 初面 → Offer → 入职）'),
+        h('div', { style: card }, h('div', { style: sec }, '渠道端到端转化'),
           h('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 11.5 } },
             h('thead', null, h('tr', null,
               h('th', { style: { textAlign: 'left', fontSize: 10.5, color: C.muted, fontWeight: 600, padding: '2px 4px' } }, '渠道'),
@@ -2127,11 +2128,11 @@ window.__ModuleLoader__.load({
               h('td', { style: { textAlign: 'right', padding: '5px 4px', color: C.good } }, String(x.offer)),
               h('td', { style: { textAlign: 'right', padding: '5px 4px', fontWeight: 700, color: x.hired ? C.good : C.muted } }, String(x.hired)),
               h('td', { style: { textAlign: 'right', padding: '5px 4px', fontSize: 11.5, color: (x.toInterview || 0) >= 20 ? C.good : C.warn } }, (x.toInterview != null ? x.toInterview + '%' : '—'))))))),
-        h('div', { style: card }, h('div', { style: sec }, '招聘漏斗（当前停留）'),
+        h('div', { style: card }, h('div', { style: sec }, '招聘漏斗 · 当前停留'),
           ...dash.funnel.filter(x => x.count > 0).map(x => bar(x.stage, x.count, x, maxF)))))
       // 即将入职（招聘兑现信号：Offer 已发、待报到）
       if ((dash.arrivals || []).length) analysisParts.push(h('div', { style: { ...card, marginTop: 10, padding: '10px 13px' } },
-        h('div', { style: { fontSize: 12.5, fontWeight: 700, marginBottom: 5 } }, '▍即将入职（' + dash.arrivals.length + '）'),
+        h('div', { style: { fontSize: 12.5, fontWeight: 700, marginBottom: 5 } }, '▍即将入职 · ' + dash.arrivals.length),
         ...dash.arrivals.map(a => h('div', { key: a.id, onClick: () => { setSel(a.id); onGoto('process') }, style: { display: 'flex', gap: 8, fontSize: 11.5, padding: '3px 0', cursor: 'pointer' } },
           h('b', null, a.name),
           h('span', { style: { color: C.muted } }, a.stage),
@@ -2161,7 +2162,7 @@ window.__ModuleLoader__.load({
       }
       })()
       if (analysisParts.length) out.push(h('details', { style: { marginTop: 12 } },
-        h('summary', { style: { cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: C.muted, padding: '6px 0', userSelect: 'none' } }, '▸ 更多数据分析（渠道转化 / 漏斗 / 即将入职 / 14天趋势）'),
+        h('summary', { style: { cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: C.muted, padding: '6px 0', userSelect: 'none' } }, '▸ 更多数据分析'),
         h('div', { style: { marginTop: 8 } }, ...analysisParts)))
       return h('div', null, ...out)
     }
@@ -2448,7 +2449,8 @@ window.__ModuleLoader__.load({
       const [hint, setHint] = React.useState(null)
       // 浮层表单：看板卡"下一步"原地办理，不再跳详情页
       const [modal, setModal] = React.useState(null)
-      const { data, error, busy, reload } = useWorkbench(sel)
+      const [period, setPeriod] = React.useState('all')
+      const { data, error, busy, reload } = useWorkbench(sel, period)
       // 看板卡"下一步"直达：选人 + 跳流程页 + 打开对应表单（或直接执行轻动作）
       const act = (body) => api(ACTION, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
         .then(j => { setToast(j.message || '完成'); reload(); return j }).catch(e => setToast('失败：' + String(e.message || e)))
@@ -2480,6 +2482,12 @@ window.__ModuleLoader__.load({
       // 顶部工具条（contextual）
       const top = h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '10px 16px', borderBottom: '1px solid ' + C.border } },
         h('div', { style: { fontSize: 14, fontWeight: 700, marginRight: 4 } }, (NAV.find(n => n.id === nav) || {}).label || ''),
+        // 周期切换：仅概览（数据大屏按周/月看流量，环比自动）
+        nav === 'overview' ? h('div', { style: { display: 'flex', gap: 0, border: '1px solid ' + C.border, borderRadius: 8, overflow: 'hidden' } },
+          ...[['week', '本周'], ['month', '本月'], ['all', '累计']].map(([p, lbl]) => h('button', { key: p, type: 'button',
+            onClick: () => setPeriod(p),
+            style: { border: 'none', padding: '4px 12px', fontSize: 11.5, cursor: 'pointer',
+              background: period === p ? C.accent : 'transparent', color: period === p ? '#fff' : C.muted, fontWeight: period === p ? 700 : 400 } }, lbl))) : null,
         h('div', { style: { flex: 1 } }),
         h('button', { type: 'button', style: { ...btn, padding: '3px 10px', fontSize: 11.5 }, onClick: reload }, busy ? '刷新中…' : '刷新'),
         h('button', { type: 'button', style: { ...btn, padding: '3px 10px', fontSize: 11.5 }, onClick: async () => {
@@ -2494,7 +2502,29 @@ window.__ModuleLoader__.load({
             setTimeout(() => URL.revokeObjectURL(url), 2000)
             setToast('已导出 ' + j.filename)
           } catch (e) { setToast('导出失败：' + String(e.message || e)) }
-        } }, '⇩ 导出 CSV'))
+        } }, '⇩ 导出 CSV'),
+        h('button', { type: 'button', style: { ...btn, padding: '3px 10px', fontSize: 11.5 }, title: '下载看板数据（KPI/漏斗/渠道/职位/趋势）', onClick: () => {
+          try {
+            const dd = (data && data.dashboard) || {}
+            const rows = []
+            rows.push(['板块', '指标', '值', '单位'])
+            for (const x of (dd.kpis || [])) rows.push(['KPI', x.label, x.value, x.unit || ''])
+            for (const x of (dd.kpisMinor || [])) rows.push(['KPI', x.label, x.value, x.unit || ''])
+            for (const x of (dd.pipeline || [])) rows.push(['漏斗', x.label, x.count, ''])
+            for (const x of (dd.sourceFunnel || [])) rows.push(['渠道·' + x.source, '简历', x.total, ''], ['渠道·' + x.source, '初筛', x.screened, ''], ['渠道·' + x.source, '初面', x.interview, ''], ['渠道·' + x.source, 'Offer', x.offer, ''], ['渠道·' + x.source, '入职', x.hired, ''])
+            for (const x of (dd.hiring || [])) rows.push(['职位·' + x.title, '需求', x.hc, ''], ['职位·' + x.title, '已入职', x.hired, ''], ['职位·' + x.title, '在途', x.inFlow, ''], ['职位·' + x.title, '缺口', x.gap, ''])
+            for (const x of (data.trend || [])) rows.push(['趋势', x.date, x.candidates, ''])
+            const esc = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'
+            const csv = '\ufeff' + rows.map(r => r.map(esc).join(',')).join('\n')
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+            const url = URL.createObjectURL(blob)
+            const aEl = document.createElement('a')
+            aEl.href = url; aEl.download = 'dashboard-' + ((data.dashboard || {}).periodMode || 'all') + '-' + new Date().toISOString().slice(0, 10) + '.csv'
+            document.body.appendChild(aEl); aEl.click(); document.body.removeChild(aEl)
+            setTimeout(() => URL.revokeObjectURL(url), 2000)
+            setToast('已下载看板数据 CSV')
+          } catch (e) { setToast('下载失败：' + String(e.message || e)) }
+        } }, '⬇ 数据'))
 
       // 主区内容按导航切换
       let body

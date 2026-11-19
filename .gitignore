@@ -67,3 +67,6 @@ recruiting/
 overview_now.png
 mock.png
 _cmp.html
+
+# ===== 个人本地脚本（不入库）=====
+scripts/make_fake_data.mjs
