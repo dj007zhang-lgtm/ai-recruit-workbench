@@ -1,0 +1,34 @@
+{
+  "name": "@local/ai-recruiting-workbench",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI 招聘工作台：事件账本 + BARS 逐维判档 + 面试协作 + 校准闭环。数据本地，候选人信息不入库。",
+  "exports": {
+    ".": "./ai-recruiting-workbench/index.js",
+    "./client": "./ai-recruiting-workbench/client.js",
+    "./locale/*.json": "./ai-recruiting-workbench/locale/*.json",
+    "./icon": "./ai-recruiting-workbench/icon.svg"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./ai-recruiting-workbench/cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  },
+  "files": [
+    "ai-recruiting-workbench/**",
+    "scripts/hooks/**",
+    "scripts/pre-push-check.sh",
+    "README.md",
+    "WORKSPACE-DESIGN.md",
+    "LICENSE"
+  ]
+}
