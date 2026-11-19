@@ -1013,8 +1013,27 @@ window.__ModuleLoader__.load({
           h('div', null, h('div', { style: { fontSize: 11.5, color: C.muted, marginBottom: 6 } }, '时间'), h(DateTimeField, null))))
         // 面试官反馈的可面试时段：点一下直接填入（避免手动敲时间出错，也让面试官的时间真正被用上）
         if (candidate.availability && candidate.availability.length) {
+          // 从可用区间生成候选时刻：招聘方在区间内自由选（默认给整点建议，也可手动改）
           const allSlots = []
-          for (const av of candidate.availability) for (const sl of (av.slots || [])) allSlots.push({ at: sl.at, note: sl.note, by: av.interviewer })
+          for (const av of candidate.availability) {
+            const wins = av.windows || av.slots || []
+            for (const w of wins) {
+              if (w.at) { allSlots.push({ at: w.at, note: w.note, by: av.interviewer }); continue }
+              const from = String(w.from || '')
+              const to = String(w.to || '')
+              if (!from) continue
+              // 区间内按整点生成建议（最多 4 个，避免刷屏）
+              const startMs = new Date(from).getTime()
+              const endMs = to ? new Date(to).getTime() : startMs + 2 * 3600000
+              let n = 0
+              for (let t = startMs; t <= endMs && n < 4; t += 3600000) {
+                const d0 = new Date(t)
+                const iso = d0.getFullYear() + '-' + String(d0.getMonth() + 1).padStart(2, '0') + '-' + String(d0.getDate()).padStart(2, '0') + 'T' + String(d0.getHours()).padStart(2, '0') + ':00'
+                allSlots.push({ at: iso, note: w.note, by: av.interviewer })
+                n++
+              }
+            }
+          }
           if (allSlots.length) {
             body.push(h('div', { style: { marginBottom: 8, padding: '7px 10px', background: tint(C.good, .06), border: '1px solid ' + tint(C.good, .28), borderRadius: 8 } },
               h('div', { style: { fontSize: 10.5, color: C.good, marginBottom: 5 } }, '📅 面试官反馈的可面试时段 · 点选填入'),
@@ -1239,10 +1258,15 @@ window.__ModuleLoader__.load({
         // 面试官反馈的可面试时间（招聘方据此排期；点时段即填入选定时间）
         (c.availability && c.availability.length) ? h('div', { style: { ...card, marginTop: 8, padding: '9px 12px', borderColor: tint(C.good, .35), background: tint(C.good, .05) } },
           h('div', { style: { fontSize: 11, fontWeight: 700, color: C.good, marginBottom: 5 } }, '📅 面试官反馈的可面试时间'),
-          ...c.availability.map((av, i) => h('div', { key: i, style: { fontSize: 11, lineHeight: 1.6, marginBottom: 4 } },
-            h('span', { style: { fontWeight: 600 } }, av.interviewer || '面试官'), h('span', { style: { color: C.muted } }, ' · ' + (av.round || '') + '：'),
-            (av.slots && av.slots.length) ? h('span', null, ' ' + av.slots.map(s => s.at + (s.note ? '(' + s.note + ')' : '')).join('、')) : null,
-            av.note ? h('div', { style: { color: C.muted, paddingLeft: 8 } }, '偏好：' + av.note) : null)),
+          ...c.availability.map((av, i) => {
+            const wins = av.windows || av.slots || []
+            return h('div', { key: i, style: { fontSize: 11, lineHeight: 1.6, marginBottom: 5 } },
+              h('span', { style: { fontWeight: 600 } }, av.interviewer || '面试官'), h('span', { style: { color: C.muted } }, ' · ' + (av.round || '') + ' 可用：'),
+              wins.length ? h('div', { style: { paddingLeft: 8, marginTop: 2 } },
+                ...wins.map((w, j) => h('div', { key: j, style: { color: C.text } },
+                  '· ' + (w.from || w.at || '').replace('T', ' ') + (w.to ? ' ~ ' + String(w.to).replace('T', ' ') : '') + (w.note ? '（' + w.note + '）' : '')))) : h('span', null, '（仅说明偏好）'),
+              av.note ? h('div', { style: { color: C.muted, paddingLeft: 8 } }, '说明：' + av.note) : null)
+          }),
           h('button', { type: 'button', style: { ...btn, padding: '2px 9px', fontSize: 10.5, marginTop: 4 }, onClick: () => setPanel('interview') }, '去排期 →')) : null,
         // 交付物导出：Offer 函 / 面试评估表 / 候选人报告（数据全部来自账本，不臆造）
         h('div', { style: { display: 'flex', gap: 4, alignItems: 'center' } },

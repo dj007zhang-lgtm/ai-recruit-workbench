@@ -422,11 +422,13 @@ export function apply(ctx, config = {}) {
             score: a.score == null || a.score === '' ? null : Number(a.score), pass: a.pass !== false, note: String(a.note || '').slice(0, 1000),
             dims: (a.dims && typeof a.dims === 'object' && !Array.isArray(a.dims)) ? Object.keys(a.dims).map(k => ({ dim: k, level: a.dims[k] })) : (a.dims || null) }, causedBy: batch.seq })
         let availSeq = null
-        const slots = Array.isArray(a.slots) ? a.slots.filter(x => x && x.at).map(x => ({ at: String(x.at).slice(0, 20), note: String(x.note || '').slice(0, 60) })).slice(0, 10) : []
+        // 时间区间（面试官给可用窗口，招聘方在窗口内自由排具体人/时刻）
+        const windows = Array.isArray(a.windows) ? a.windows.filter(x => x && x.from).map(x => ({
+          from: String(x.from).slice(0, 20), to: String(x.to || '').slice(0, 20), note: String(x.note || '').slice(0, 60) })).slice(0, 10) : []
         const availNote = String(a.availNote || '').slice(0, 500)
-        if (slots.length || availNote.trim()) {
+        if (windows.length || availNote.trim()) {
           const ev2 = appendEvent(d, { type: 'interviewer.availability', actor: 'human', subject: { kind: 'candidate', id: cid },
-            payload: { interviewer: name, interviewerToken: String(a.token || ''), batchToken: String(a.token || ''), round: batch.round, slots, note: availNote }, causedBy: ev.seq })
+            payload: { interviewer: name, interviewerToken: String(a.token || ''), batchToken: String(a.token || ''), round: batch.round, windows, slots: windows, note: availNote }, causedBy: ev.seq })
           availSeq = ev2.seq
         }
         replyJson(res, 200, { ok: true, seq: ev.seq, availSeq, message: '已提交' })
@@ -444,12 +446,14 @@ export function apply(ctx, config = {}) {
         const d = dataDir(); ensure(d); migrateLegacy(d)
         const hit = findByInterviewToken(d, String(a.token || ''))
         if (!hit) return replyJson(res, 404, { ok: false, error: '链接无效或已过期' })
-        const slots = Array.isArray(a.slots) ? a.slots.filter(x => x && x.at).map(x => ({ at: String(x.at).slice(0, 20), note: String(x.note || '').slice(0, 60) })).slice(0, 10) : []
+        // 时间区间（面试官给可用窗口，招聘方在窗口内自由排具体人/时刻）
+        const windows = Array.isArray(a.windows) ? a.windows.filter(x => x && x.from).map(x => ({
+          from: String(x.from).slice(0, 20), to: String(x.to || '').slice(0, 20), note: String(x.note || '').slice(0, 60) })).slice(0, 10) : []
         const note = String(a.note || '').slice(0, 500)
-        if (!slots.length && !note.trim()) return replyJson(res, 400, { ok: false, error: '请至少提供一个时段或时间偏好说明' })
+        if (!windows.length && !note.trim()) return replyJson(res, 400, { ok: false, error: '请至少提供一个可用时间区间或说明时间偏好' })
         const name = String(a.interviewer || hit.interview.interviewer || '面试官').trim().slice(0, 20)
         const ev = appendEvent(d, { type: 'interviewer.availability', actor: 'human', subject: { kind: 'candidate', id: hit.candidateId },
-          payload: { interviewer: name, interviewerToken: String(a.token || ''), round: hit.interview.round || '初试', slots, note }, causedBy: hit.seq })
+          payload: { interviewer: name, interviewerToken: String(a.token || ''), round: hit.interview.round || '初试', windows, slots: windows, note }, causedBy: hit.seq })
         replyJson(res, 200, { ok: true, seq: ev.seq, message: '已收到你的可面试时间，招聘方会据此排期' })
       } catch (e) { replyJson(res, 400, { ok: false, error: String(e && e.message || e) }) }
     },
@@ -475,11 +479,13 @@ export function apply(ctx, config = {}) {
             recommend: String(a.recommend || '') }, causedBy: hit.seq })
         // 一次提交可同时带可面试时间（先评价、后给时间：推荐了才需要排期）
         let availSeq = null
-        const slots = Array.isArray(a.slots) ? a.slots.filter(x => x && x.at).map(x => ({ at: String(x.at).slice(0, 20), note: String(x.note || '').slice(0, 60) })).slice(0, 10) : []
+        // 时间区间（面试官给可用窗口，招聘方在窗口内自由排具体人/时刻）
+        const windows = Array.isArray(a.windows) ? a.windows.filter(x => x && x.from).map(x => ({
+          from: String(x.from).slice(0, 20), to: String(x.to || '').slice(0, 20), note: String(x.note || '').slice(0, 60) })).slice(0, 10) : []
         const availNote = String(a.availNote || '').slice(0, 500)
-        if (slots.length || availNote.trim()) {
+        if (windows.length || availNote.trim()) {
           const ev2 = appendEvent(d, { type: 'interviewer.availability', actor: 'human', subject: { kind: 'candidate', id: cid },
-            payload: { interviewer: name, interviewerToken: String(a.token || ''), round: hit.interview.round || '初试', slots, note: availNote }, causedBy: ev.seq })
+            payload: { interviewer: name, interviewerToken: String(a.token || ''), round: hit.interview.round || '初试', windows, slots: windows, note: availNote }, causedBy: ev.seq })
           availSeq = ev2.seq
         }
         replyJson(res, 200, { ok: true, seq: ev.seq, availSeq, message: availSeq ? '面评与可面试时间已提交，招聘团队会据此排期' : '面评已提交给招聘团队' })
@@ -1438,13 +1444,15 @@ export function apply(ctx, config = {}) {
         <label class="fld">面评意见<textarea id="note" rows="3" placeholder="技术栈深度 / 项目真实性 / 沟通表达 / 风险点…"></textarea></label>
 
         <div id="availBlock" class="avail hidden">
-          <div class="availhead">推荐通过，请填写可面试时间</div>
-          <div class="hint">招聘方据此排期，可填多个时段</div>
-          <div id="slots">
-            <div class="slot"><input type="datetime-local" class="slotTime"><input type="text" class="slotNote" placeholder="备注（线上/线下）"></div>
+          <div class="availhead">推荐通过，请给出你的可用时间区间</div>
+          <div class="hint">填你能安排面试的时间段（如周三 14:00–18:00），招聘方会在区间内自行安排候选人</div>
+          <div id="windows">
+            <div class="win">
+              <input type="datetime-local" class="winFrom"><span class="tilde">至</span><input type="datetime-local" class="winTo"><input type="text" class="winNote" placeholder="备注（线上/线下）">
+            </div>
           </div>
-          <button type="button" id="addslot" class="ghost">+ 再加一个时段</button>
-          <label class="fld">时间偏好<span class="opt">可选</span><textarea id="availNote" rows="2" placeholder="如：工作日晚上均可；周三全天不在"></textarea></label>
+          <button type="button" id="addwin" class="ghost">+ 再加一个时间区间</button>
+          <label class="fld">其他说明<span class="opt">可选</span><textarea id="availNote" rows="2" placeholder="如：只在工作日下午；面试间隔需 30 分钟"></textarea></label>
         </div>
 
         <button type="submit" id="submit">提交给招聘团队</button>
@@ -1461,27 +1469,28 @@ export function apply(ctx, config = {}) {
             if (PASS === '1') ab.classList.remove('hidden'); else ab.classList.add('hidden');
           };
         });
-        document.getElementById('addslot').onclick = function () {
-          var d = document.createElement('div'); d.className = 'slot';
-          d.innerHTML = '<input type="datetime-local" class="slotTime"><input type="text" class="slotNote" placeholder="备注（线上/线下）">';
-          document.getElementById('slots').appendChild(d);
+        document.getElementById('addwin').onclick = function () {
+          var d = document.createElement('div'); d.className = 'win';
+          d.innerHTML = '<input type="datetime-local" class="winFrom"><span class="tilde">至</span><input type="datetime-local" class="winTo"><input type="text" class="winNote" placeholder="备注（线上/线下）">';
+          document.getElementById('windows').appendChild(d);
         };
         document.getElementById('ivform').onsubmit = async function (e) {
           e.preventDefault();
           var msg = document.getElementById('msg');
           var dims = {};
           document.querySelectorAll('select[data-dim]').forEach(function (s) { if (s.value) dims[s.dataset.dim] = s.value });
-          var slots = [];
+          var windows = [];
           if (PASS === '1') {
-            document.querySelectorAll('#slots .slot').forEach(function (row) {
-              var t = row.querySelector('.slotTime').value;
-              if (t) slots.push({ at: t, note: row.querySelector('.slotNote').value || '' });
+            document.querySelectorAll('#windows .win').forEach(function (row) {
+              var f0 = row.querySelector('.winFrom').value;
+              var t0 = row.querySelector('.winTo').value;
+              if (f0) windows.push({ from: f0, to: t0 || '', note: row.querySelector('.winNote').value || '' });
             });
           }
           var body = { token: ${JSON.stringify(token)}, interviewer: document.getElementById('ivname').value,
             pass: PASS === '1', score: document.getElementById('score').value,
             note: document.getElementById('note').value, dims: Object.keys(dims).length ? dims : null,
-            slots: slots, availNote: PASS === '1' ? document.getElementById('availNote').value : '' };
+            windows: windows, availNote: PASS === '1' ? document.getElementById('availNote').value : '' };
           msg.className = 'msg'; msg.textContent = '提交中…';
           try {
             var r = await fetch('/api/ai-recruiting/interviewer-submit', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
@@ -1518,11 +1527,11 @@ export function apply(ctx, config = {}) {
           <label class="fld">综合评分<span class="opt">可选 0-100</span><input class="score" type="number" min="0" max="100" placeholder="如 80"></label>
           <label class="fld">面评意见<textarea class="note" rows="3" placeholder="技术栈深度 / 项目真实性 / 沟通表达 / 风险点…"></textarea></label>
           <div class="avail hidden">
-            <div class="availhead">推荐通过，请填写可面试时间</div>
-            <div class="hint">招聘方据此排期，可填多个时段</div>
-            <div class="slots"><div class="slot"><input type="datetime-local" class="slotTime"><input type="text" class="slotNote" placeholder="备注（线上/线下）"></div></div>
-            <button type="button" class="addslot ghost">+ 再加一个时段</button>
-            <label class="fld">时间偏好<span class="opt">可选</span><textarea class="availNote" rows="2" placeholder="如：工作日晚上均可"></textarea></label>
+            <div class="availhead">推荐通过，请给出你的可用时间区间</div>
+            <div class="hint">招聘方会在区间内自行安排候选人</div>
+            <div class="wins"><div class="win"><input type="datetime-local" class="winFrom"><span class="tilde">至</span><input type="datetime-local" class="winTo"><input type="text" class="winNote" placeholder="备注（线上/线下）"></div></div>
+            <button type="button" class="addwin ghost">+ 再加一个时间区间</button>
+            <label class="fld">其他说明<span class="opt">可选</span><textarea class="availNote" rows="2" placeholder="如：只在工作日下午"></textarea></label>
           </div>
           <button type="submit" class="sub">提交给招聘团队</button>
           <div class="msg"></div>
@@ -1550,18 +1559,18 @@ export function apply(ctx, config = {}) {
       '<div class="bhead"><h1>候选人评审</h1><div class="m">' + esc(batch.round) + ' · 共 ' + list.length + ' 人' + (batch.interviewer ? ' · 面试官 ' + esc(batch.interviewer) : '') + (batch.place ? ' · ' + esc(batch.place) : '') + '</div></div>' +
       '<div class="blayout"><div class="ivlist">' + items + '</div><div>' + panels + '</div></div></div>' +
       '<script>' +
-      'var SLOT_HTML="<input type=datetime-local class=slotTime><input type=text class=slotNote placeholder=备注>";' +
+      'var WIN_HTML="<input type=datetime-local class=winFrom><span class=tilde>至</span><input type=datetime-local class=winTo><input type=text class=winNote placeholder=备注>";' +
       'var items=document.querySelectorAll(".ivitem"),panels=document.querySelectorAll(".panel");' +
       'items.forEach(function(it){it.onclick=function(){items.forEach(function(x){x.classList.remove("on")});panels.forEach(function(x){x.style.display="none"});it.classList.add("on");var pnl=panels[parseInt(it.dataset.i,10)];if(pnl)pnl.style.display=""}})};' +
       'if(items[0])items[0].classList.add("on");' +
       'document.querySelectorAll(".form").forEach(function(form){' +
       '  var pass="1";var segBtns=form.querySelectorAll(".seg button");' +
       '  segBtns.forEach(function(b){b.onclick=function(){segBtns.forEach(function(x){x.classList.remove("on")});b.classList.add("on");pass=b.dataset.v;var av=form.querySelector(".avail");if(pass==="1")av.classList.remove("hidden");else av.classList.add("hidden")}})};' +
-      '  form.querySelector(".addslot").onclick=function(){var sl=form.querySelector(".slots");var dv=document.createElement("div");dv.className="slot";dv.innerHTML=SLOT_HTML;sl.appendChild(dv)};' +
+      '  form.querySelector(".addwin").onclick=function(){var sl=form.querySelector(".wins");var dv=document.createElement("div");dv.className="win";dv.innerHTML=WIN_HTML;sl.appendChild(dv)};' +
       '  form.onsubmit=async function(e){e.preventDefault();var msg=form.querySelector(".msg");var dims={};' +
       '    form.querySelectorAll("select[data-dim]").forEach(function(s){if(s.value)dims[s.dataset.dim]=s.value});' +
-      '    var slots=[];if(pass==="1"){form.querySelectorAll(".slot").forEach(function(r){var t=r.querySelector(".slotTime").value;if(t)slots.push({at:t,note:r.querySelector(".slotNote").value||""})})}' +
-      '    var body={token:' + JSON.stringify(token) + ',interviewer:form.querySelector(".ivname").value,pass:pass==="1",score:form.querySelector(".score").value,note:form.querySelector(".note").value,dims:Object.keys(dims).length?dims:null,slots:slots,availNote:pass==="1"?form.querySelector(".availNote").value:""};' +
+      '    var windows=[];if(pass==="1"){form.querySelectorAll(".win").forEach(function(r){var f0=r.querySelector(".winFrom").value;var t0=r.querySelector(".winTo").value;if(f0)windows.push({from:f0,to:t0||"",note:r.querySelector(".winNote").value||""})})}' +
+      '    var body={token:' + JSON.stringify(token) + ',interviewer:form.querySelector(".ivname").value,pass:pass==="1",score:form.querySelector(".score").value,note:form.querySelector(".note").value,dims:Object.keys(dims).length?dims:null,windows:windows,availNote:pass==="1"?form.querySelector(".availNote").value:""};' +
       '    msg.className="msg";msg.textContent="提交中…";' +
       '    try{var r=await fetch("/api/ai-recruiting/interviewer-submit-candidate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign({candidateId:form.dataset.cid},body))});var j=await r.json();' +
       '      if(j.ok){msg.className="msg ok";msg.textContent="✅ "+j.message;form.style.display="none";var it=items[form.dataset.i];if(it){var d=document.createElement("span");d.className="ivdone";d.textContent="已提交";it.querySelector(".ivl").appendChild(d)}}' +
@@ -1618,9 +1627,10 @@ body{margin:0;background:#0e1320;color:#e8eef8;font:14px/1.6 -apple-system,"Ping
 .avail{margin:4px 0 14px;padding:14px;background:rgba(52,199,123,.06);border:1px solid rgba(52,199,123,.28);border-radius:11px}
 .avail.hidden{display:none}
 .availhead{font-size:12.5px;font-weight:700;color:#34d399;margin-bottom:3px}
-.slot{display:flex;gap:8px;margin-bottom:8px}
-.slot input{flex:1;background:#0e1320;border:1px solid #2b3350;color:#e8eef8;border-radius:9px;padding:9px 11px;font:13px inherit}
-.slot .slotNote{flex:.75}
+.win{display:flex;gap:7px;margin-bottom:8px;align-items:center;flex-wrap:wrap}
+.win input{flex:1;min-width:130px;background:#0e1320;border:1px solid #2b3350;color:#e8eef8;border-radius:9px;padding:9px 11px;font:13px inherit}
+.win .winNote{flex:.7;min-width:110px}
+.tilde{color:#6f7c99;font-size:12px;flex:none}
 .ghost{width:100%;background:transparent;border:1px dashed #3b4568;color:#8b97b3;border-radius:9px;padding:9px;font:12.5px inherit;cursor:pointer;margin-bottom:12px}
 .ghost:hover{border-color:#4f84ff;color:#7aa2ff}
 #submit{width:100%;background:#4f84ff;color:#fff;border:0;border-radius:10px;padding:13px;font:14.5px inherit;font-weight:700;cursor:pointer;margin-top:4px;transition:filter .12s}
@@ -1629,7 +1639,7 @@ body{margin:0;background:#0e1320;color:#e8eef8;font:14px/1.6 -apple-system,"Ping
 .msg.ok{color:#34d399}.msg.bad{color:#f47171}
 .done{background:rgba(52,199,123,.11);border:1px solid rgba(52,199,123,.35);color:#34d399;padding:15px;border-radius:11px;margin-bottom:12px;font-size:13px}
 .err{background:rgba(244,113,113,.1);border:1px solid rgba(244,113,113,.35);color:#f47171;padding:16px;border-radius:11px;font-size:13px}
-@media(max-width:520px){.wrap{padding:12px}.card{padding:14px}.slot{flex-direction:column}}`
+@media(max-width:520px){.wrap{padding:12px}.card{padding:14px}.win{flex-direction:column;align-items:stretch}}`
   }
 
   // ===== 评估 → 面试验证任务：把 BARS 评估结果转成「面试要验证什么」的结构化任务清单 =====
