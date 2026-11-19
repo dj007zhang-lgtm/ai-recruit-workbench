@@ -92,6 +92,18 @@ window.__ModuleLoader__.load({
       // 其他（纯 var 无 fallback / 颜色名）：用 color-mix 生成半透明，浏览器不支持则回退 transparent
       return 'color-mix(in srgb, ' + raw + ' ' + Math.round(a * 100) + '%, transparent)'
     }
+    // 看板按招聘环节分组（7 组，列内按子阶段分组）—— 模块级，供 Kanban 与 Workbench 共用
+    const GROUPS = [
+      { key: '待评估', label: '待评估', stages: ['待评估'], hue: C.flat },
+      { key: '初试', label: '初试', stages: ['待初试', '初试中'], hue: C.accent },
+      { key: '复试', label: '复试', stages: ['待复试', '复试中'], hue: C.warn },
+      { key: '待背调', label: '背调', stages: ['待背调'], hue: C.info },
+      { key: '待发Offer', label: '待发 Offer', stages: ['待发 Offer'], hue: C.good },
+      { key: 'Offer入职', label: 'Offer / 入职', stages: ['Offer已发', 'Offer已接受', '待入职'], hue: C.purple },
+      { key: '已入职', label: '已入职', stages: ['已入职'], hue: C.good },
+    ]
+
+
     const card = { background: C.card, border: '1px solid ' + C.border, borderRadius: 12, padding: '11px 13px', minWidth: 0, boxShadow: '0 1px 3px rgba(0,0,0,.14)' }
     const clk = (fn) => ({ onClick: fn, role: 'button', tabIndex: 0, onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(e) } }, className: 'rec-row' })
     // ===== AI 数据分析 Bot（悬浮、点击才分析、带缓存、可对话追问）=====
@@ -332,16 +344,6 @@ window.__ModuleLoader__.load({
     /* ============ 看板：阶段列 + 紧凑卡（每列最多 5 张，超出去列表看） ============ */
     function Kanban({ data, sel, setSel, onOpen, onMore, onAdopt }) {
       const cands = data.candidates || []
-      // 看板按招聘环节分组（7 组，列内按子阶段分组）
-      const GROUPS = [
-        { key: '待评估', label: '待评估', stages: ['待评估'], hue: C.flat },
-        { key: '初试', label: '初试', stages: ['待初试', '初试中'], hue: C.accent },
-        { key: '复试', label: '复试', stages: ['待复试', '复试中'], hue: C.warn },
-        { key: '待背调', label: '背调', stages: ['待背调'], hue: C.info },
-        { key: '待发Offer', label: '待发 Offer', stages: ['待发 Offer'], hue: C.good },
-        { key: 'Offer入职', label: 'Offer / 入职', stages: ['Offer已发', 'Offer已接受', '待入职'], hue: C.purple },
-        { key: '已入职', label: '已入职', stages: ['已入职'], hue: C.good },
-      ]
       const cardEl = (c) => h('div', {
         key: c.id, ...clk(() => setSel(c.id)),
         style: { background: C.surface, border: '1px solid ' + (c.id === sel ? C.accent : C.border), borderRadius: 8, padding: '7px 9px', cursor: 'pointer' },
@@ -2389,8 +2391,9 @@ window.__ModuleLoader__.load({
     }
 
     function AiCapPage({ data }) {
-      const ai = data.dashboard.ai
-      const st = data.standards
+      // 空值保护：dashboard.ai / standards 在数据不全时可能缺失（历史 bug：直接取 .ai.calls 会崩整页）
+      const ai = (data.dashboard && data.dashboard.ai) || {}
+      const st = data.standards || {}
       const ex = data.aiExtra || {}
       const out = []
       // ===== Hero：AI 基座定位 =====
