@@ -2110,6 +2110,46 @@ window.__ModuleLoader__.load({
       // 概览聚焦数据与分析：候选人明细在看板/列表（候选人流程），这里不重复
       // ==== 更多数据分析（折叠）====
       const analysisParts = []
+      // ===== 我的看板：从指标池自由勾选组合（个人偏好存本机，不入事件账本）=====
+      const MYDASH_KEY = 'rec_my_dashboard'
+      const MODULE_POOL = [
+        { key: 'stageFlow', label: '各环节在途', hint: '此刻人堆在哪', calc: (dd) => { const f = {}; for (const x of (dd.funnel || [])) f[x.stage] = x.count; return ['初试中 ' + (f['初试中'] || 0) + ' · 复试中 ' + (f['复试中'] || 0) + ' · 待背调 ' + (f['待背调'] || 0), C.accent] } },
+        { key: 'overdue', label: '超时未动', hint: '流失风险预警', calc: (dd, dt) => [String((dd.overdue || []).length) + ' 人', ((dt.alerts || []).length + (dd.overdue || []).length) > 0 ? C.bad : C.good] },
+        { key: 'offerRate', label: 'Offer 接受率', hint: '薪酬×吸引力×体验', calc: (dd) => { const o = dd.offerAccept || {}; return [o.sent ? Math.round((o.accepted || 0) / o.sent * 100) + '%' : '—', o.sent ? C.good : C.muted] } },
+        { key: 'screenFail', label: 'AI 初筛淘汰', hint: 'AI 挡掉的量', calc: (dd) => { const k = (dd.kpisMinor || []).find(x => x.key === 'screenFail'); return [k ? String(k.value) + (k.unit || '') : '—', C.accent] } },
+        { key: 'autoRate', label: '免人工率', hint: 'AI 替你处理的占比', calc: (dd) => { const k = (dd.kpisMinor || []).find(x => x.key === 'autoRate'); return [k ? k.value + '%' : '—', C.purple] } },
+        { key: 'talent', label: '人才库沉淀', hint: '可复捞资产', calc: (dd) => { const k = (dd.kpisMinor || []).find(x => x.key === 'talent'); return [k ? k.value + ' 人' : '—', C.info] } },
+        { key: 'pending', label: '待人工拍板', hint: '责任堆积点', calc: (dd) => { const k = (dd.kpisMinor || []).find(x => x.key === 'pending'); return [k ? k.value + ' 人' : '—', (k && k.value > 0) ? C.warn : C.good] } },
+        { key: 'cycle', label: '平均到岗周期', hint: '招聘速度', calc: (dd) => [(dd.cycle || {}).resolvedAvgDays != null ? dd.cycle.resolvedAvgDays + ' 天' : '—', C.muted] },
+        { key: 'gaps', label: '缺口最大岗位', hint: '定向加力目标', calc: (dd) => { const t = (dd.hiring || []).slice().sort((a, b) => (b.gap || 0) - (a.gap || 0))[0]; return t && t.gap > 0 ? [t.title + ' 缺 ' + t.gap, C.bad] : ['无缺口', C.good] } },
+        { key: 'srcTop', label: '供血最强渠道', hint: '渠道 ROI 参考', calc: (dd) => { const t = (dd.sourceFunnel || []).slice().sort((a, b) => (b.total || 0) - (a.total || 0))[0]; return t ? [t.source + ' ' + t.total + ' 份', C.accent] : ['—', C.muted] } },
+        { key: 'sGrade', label: 'S 级储备', hint: '强烈推荐人数', calc: (dd) => [((dd.aiPerf || {}).gradeDist.S || 0) + ' 人', C.good] },
+        { key: 'lowConf', label: '低置信待复核', hint: 'AI 拿不准的', calc: (dd, dt) => [String((dd.pending || {}).lowConfidence || 0) + ' 人', C.warn] },
+        { key: 'corrections', label: '累计纠偏', hint: '标准在演进', calc: (dd) => [((dd.aiPerf || {}).corrections || 0) + ' 次', C.muted] },
+      ]
+      function MyDashboardBlock({ dash, data }) {
+        const [sel, setSel] = React.useState(() => { try { return JSON.parse(localStorage.getItem(MYDASH_KEY) || '[]').filter(k => MODULE_POOL.some(m => m.key === k)) } catch (e) { return [] } })
+        const [editing, setEditing] = React.useState(false)
+        const save = (keys) => { setSel(keys); try { localStorage.setItem(MYDASH_KEY, JSON.stringify(keys)) } catch (e) {} }
+        const toggle = (k) => save(sel.indexOf(k) >= 0 ? sel.filter(x => x !== k) : sel.concat([k]))
+        return h('div', { style: { ...card, marginTop: 12, padding: '12px 14px' } },
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: sel.length ? 10 : 6 } },
+            h('div', { style: { fontSize: 12.5, fontWeight: 700 } }, '★ 我的看板'),
+            h('span', { style: { fontSize: 10.5, color: C.muted } }, '自由组合你常看的指标 · 保存在本机'),
+            h('button', { type: 'button', style: { ...btn, marginLeft: 'auto', padding: '2px 10px', fontSize: 11 }, onClick: () => setEditing(v => !v) }, editing ? '完成' : '编辑组合')),
+          editing ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 6, marginBottom: sel.length ? 10 : 0 } },
+            ...MODULE_POOL.map(m => h('label', { key: m.key, style: { display: 'flex', gap: 6, alignItems: 'center', fontSize: 11.5, padding: '4px 8px', borderRadius: 7, background: sel.indexOf(m.key) >= 0 ? tint(C.accent, .10) : 'transparent', cursor: 'pointer', border: '1px solid ' + (sel.indexOf(m.key) >= 0 ? tint(C.accent, .35) : C.border) } },
+              h('input', { type: 'checkbox', checked: sel.indexOf(m.key) >= 0, onChange: () => toggle(m.key) }),
+              h('span', null, m.label)))) : null,
+          sel.length ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(130px,1fr))', gap: 8 } },
+            ...sel.map(k => { const m = MODULE_POOL.find(x => x.key === k); if (!m) return null
+              const r = m.calc(dash, data) || ['—', C.muted]
+              return h('div', { key: k, style: { background: C.surface, borderRadius: 9, padding: '8px 11px', borderLeft: '3px solid ' + (r[1] || C.accent) } },
+                h('div', { style: { fontSize: 10.5, color: C.muted } }, m.label),
+                h('div', { style: { fontSize: 16, fontWeight: 800, marginTop: 2, color: r[1] || C.text } }, String(r[0])),
+                h('div', { style: { fontSize: 9, color: C.muted, marginTop: 1 } }, m.hint)) })) : (!editing ? h('div', { style: { fontSize: 11, color: C.muted } }, '点「编辑组合」勾选你常看的指标，组成你的个人工作台') : null))
+      }
+      analysisParts.push(h(MyDashboardBlock, { dash, data }))
       ;(function(){
       // 渠道质量 + 漏斗
       const maxF = Math.max.apply(null, dash.funnel.map(x => x.count).concat([1]))
