@@ -1578,6 +1578,7 @@ export function apply(ctx, config = {}) {
 .reasonhead{font-size:12px;font-weight:700;color:#f47171;margin-bottom:7px}
 .reason textarea{width:100%;background:#0e1320;border:1px solid #2b3350;color:#e8eef8;border-radius:9px;padding:10px 12px;font:13.5px/1.5 inherit;resize:vertical}
 .final{background:#171d2e;border:1px solid #262e47;border-radius:14px;padding:18px}
+.final.hidden{display:none!important}
 .final h2{margin:0 0 6px;font-size:17px}
 .sumrow{font-size:12.5px;color:#a7b1c7;margin:4px 0}
 .sumrow b{color:#e8eef8}
@@ -1612,7 +1613,7 @@ export function apply(ctx, config = {}) {
       'document.querySelectorAll(".form").forEach(function(form){' +
       '  var i=parseInt(form.dataset.i,10);var v=null;' +
       '  var seg=form.querySelectorAll(".seg button");' +
-      '  seg.forEach(function(b){b.onclick=function(){seg.forEach(function(x){x.classList.remove("on")});b.classList.add("on");v=b.dataset.v;form.querySelector(".reason").classList.toggle("hidden",v!=="0")}})};' +
+      '  seg.forEach(function(b){b.onclick=function(){seg.forEach(function(x){x.classList.remove("on")});b.classList.add("on");v=b.dataset.v;form.querySelector(".reason").classList.toggle("hidden",v!=="0")}});' +
       '  form.querySelector(".next").onclick=function(){' +
       '    var msg=form.querySelector(".msg");' +
       '    if(v===null){msg.className="msg bad";msg.textContent="请选择通过或不通过";return}' +
