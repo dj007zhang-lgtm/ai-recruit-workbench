@@ -409,7 +409,16 @@ export function apply(ctx, config = {}) {
             score: a.score == null || a.score === '' ? null : Number(a.score), pass: a.pass !== false, note: String(a.note || '').slice(0, 1000),
             dims: (a.dims && typeof a.dims === 'object' && !Array.isArray(a.dims)) ? Object.keys(a.dims).map(k => ({ dim: k, level: a.dims[k] })) : (a.dims || null),
             recommend: String(a.recommend || '') }, causedBy: hit.seq })
-        replyJson(res, 200, { ok: true, seq: ev.seq, message: '面评已提交给招聘团队' })
+        // 一次提交可同时带可面试时间（先评价、后给时间：推荐了才需要排期）
+        let availSeq = null
+        const slots = Array.isArray(a.slots) ? a.slots.filter(x => x && x.at).map(x => ({ at: String(x.at).slice(0, 20), note: String(x.note || '').slice(0, 60) })).slice(0, 10) : []
+        const availNote = String(a.availNote || '').slice(0, 500)
+        if (slots.length || availNote.trim()) {
+          const ev2 = appendEvent(d, { type: 'interviewer.availability', actor: 'human', subject: { kind: 'candidate', id: cid },
+            payload: { interviewer: name, interviewerToken: String(a.token || ''), round: hit.interview.round || '初试', slots, note: availNote }, causedBy: ev.seq })
+          availSeq = ev2.seq
+        }
+        replyJson(res, 200, { ok: true, seq: ev.seq, availSeq, message: availSeq ? '面评与可面试时间已提交，招聘团队会据此排期' : '面评已提交给招聘团队' })
       } catch (e) { replyJson(res, 400, { ok: false, error: String(e && e.message || e) }) }
     },
   }))
@@ -1344,66 +1353,78 @@ export function apply(ctx, config = {}) {
       : (brief.already
         ? '<div class="done">✅ 你已提交过本次面评，感谢！招聘团队会据此推进。</div>' + interviewBriefHtml(brief, esc)
         : interviewBriefHtml(brief, esc) + `
-      <div class="card form">
-        <h3>① 反馈你的可面试时间</h3>
-        <div class="hint">招聘方会据此统一排期；填几个你有空的时段即可（可填多个）</div>
-        <div id="slots">
-          <div class="slot"><input type="datetime-local" class="slotTime"><input type="text" class="slotNote" placeholder="备注（可选，如 线上/线下）"></div>
+      <form class="card form" id="ivform" autocomplete="off">
+        <h3>提交面试评价</h3>
+        <div class="hint">你推荐通过后，再填写可面试时间供招聘方排期</div>
+
+        <label class="fld">你的姓名<input id="ivname" placeholder="面试官姓名" value="${esc(brief.interviewer)}"></label>
+
+        <div class="fld"><span class="lb">面试结论</span>
+          <div class="seg" id="passSeg">
+            <button type="button" data-v="1" class="on">推荐通过</button>
+            <button type="button" data-v="0">不通过</button>
+          </div>
         </div>
-        <button type="button" id="addslot" class="ghost">+ 再加一个时段</button>
-        <label>时间偏好说明<textarea id="availNote" rows="2" placeholder="如：工作日晚上均可；周三全天不在；希望线上"></textarea></label>
-        <button type="button" id="submitAvail">提交可面试时间</button>
-        <div id="availMsg" class="msg"></div>
-      </div>
-      <div class="card form">
-        <h3>② 提交面评（面试后填）</h3>
-        <label>你的姓名<input id="ivname" placeholder="面试官姓名" value="${esc(brief.interviewer)}"></label>
-        <label>是否推荐通过
-          <select id="pass"><option value="1">推荐通过</option><option value="0">不通过</option></select></label>
-        <label>综合评分（可选，0-100）<input id="score" type="number" min="0" max="100" placeholder="如 80"></label>
-        <div class="dimsec"><div class="dt">逐维评档（对照上方 AI 判档，可选）</div>
-          ${(brief.alignment||[]).map(a=>`<div class="dr"><span>${esc(a.dim)}（AI:${esc(a.level||'-')}）</span><select data-dim="${esc(a.dim)}"><option value="">不评</option>${lvOpts}</select></div>`).join('')}
+
+        <div class="dimsec"><div class="dt">逐维评档（可选，对照上方 AI 判档）</div>
+          ${(brief.alignment||[]).map(a=>`<div class="dr"><span class="dn">${esc(a.dim)}</span><span class="ai">AI ${esc(a.level||'—')}</span><select data-dim="${esc(a.dim)}"><option value="">不评</option>${lvOpts}</select></div>`).join('')}
         </div>
-        <label>面评意见<textarea id="note" rows="4" placeholder="技术栈/项目深度/沟通/风险点…"></textarea></label>
-        <button id="submit">提交给招聘团队</button>
+
+        <label class="fld">综合评分<span class="opt">可选 0-100</span><input id="score" type="number" min="0" max="100" placeholder="如 80"></label>
+        <label class="fld">面评意见<textarea id="note" rows="3" placeholder="技术栈深度 / 项目真实性 / 沟通表达 / 风险点…"></textarea></label>
+
+        <div id="availBlock" class="avail hidden">
+          <div class="availhead">推荐通过，请填写可面试时间</div>
+          <div class="hint">招聘方据此排期，可填多个时段</div>
+          <div id="slots">
+            <div class="slot"><input type="datetime-local" class="slotTime"><input type="text" class="slotNote" placeholder="备注（线上/线下）"></div>
+          </div>
+          <button type="button" id="addslot" class="ghost">+ 再加一个时段</button>
+          <label class="fld">时间偏好<span class="opt">可选</span><textarea id="availNote" rows="2" placeholder="如：工作日晚上均可；周三全天不在"></textarea></label>
+        </div>
+
+        <button type="submit" id="submit">提交给招聘团队</button>
         <div id="msg" class="msg"></div>
-      </div>
+      </form>
       <script>
-        // 可面试时间：动态增删时段
-        document.getElementById('addslot').onclick = () => {
-          const d = document.createElement('div'); d.className = 'slot';
-          d.innerHTML = '<input type="datetime-local" class="slotTime"><input type="text" class="slotNote" placeholder="备注（可选）">';
+        var PASS = '1';
+        document.querySelectorAll('#passSeg button').forEach(function (b) {
+          b.onclick = function () {
+            document.querySelectorAll('#passSeg button').forEach(function (x) { x.classList.remove('on') });
+            b.classList.add('on');
+            PASS = b.dataset.v;
+            var ab = document.getElementById('availBlock');
+            if (PASS === '1') ab.classList.remove('hidden'); else ab.classList.add('hidden');
+          };
+        });
+        document.getElementById('addslot').onclick = function () {
+          var d = document.createElement('div'); d.className = 'slot';
+          d.innerHTML = '<input type="datetime-local" class="slotTime"><input type="text" class="slotNote" placeholder="备注（线上/线下）">';
           document.getElementById('slots').appendChild(d);
         };
-        document.getElementById('submitAvail').onclick = async () => {
-          const slots = [];
-          document.querySelectorAll('#slots .slot').forEach(row => {
-            const t = row.querySelector('.slotTime').value;
-            const n = row.querySelector('.slotNote').value;
-            if (t) slots.push({ at: t, note: n || '' });
-          });
-          const note = document.getElementById('availNote').value;
-          if (!slots.length && !note.trim()) { const m = document.getElementById('availMsg'); m.className='msg bad'; m.textContent='请至少填一个时段或说明时间偏好'; return; }
-          const msg = document.getElementById('availMsg'); msg.className = 'msg'; msg.textContent = '提交中…';
+        document.getElementById('ivform').onsubmit = async function (e) {
+          e.preventDefault();
+          var msg = document.getElementById('msg');
+          var dims = {};
+          document.querySelectorAll('select[data-dim]').forEach(function (s) { if (s.value) dims[s.dataset.dim] = s.value });
+          var slots = [];
+          if (PASS === '1') {
+            document.querySelectorAll('#slots .slot').forEach(function (row) {
+              var t = row.querySelector('.slotTime').value;
+              if (t) slots.push({ at: t, note: row.querySelector('.slotNote').value || '' });
+            });
+          }
+          var body = { token: ${JSON.stringify(token)}, interviewer: document.getElementById('ivname').value,
+            pass: PASS === '1', score: document.getElementById('score').value,
+            note: document.getElementById('note').value, dims: Object.keys(dims).length ? dims : null,
+            slots: slots, availNote: PASS === '1' ? document.getElementById('availNote').value : '' };
+          msg.className = 'msg'; msg.textContent = '提交中…';
           try {
-            const r = await fetch('/api/ai-recruiting/interviewer-availability', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ token: ${JSON.stringify(token)}, interviewer: document.getElementById('ivname').value, slots, note }) });
-            const j = await r.json();
-            if (j.ok) { msg.className = 'msg ok'; msg.textContent = '✅ ' + j.message; }
+            var r = await fetch('/api/ai-recruiting/interviewer-submit', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+            var j = await r.json();
+            if (j.ok) { msg.className = 'msg ok'; msg.textContent = '✅ ' + j.message; document.getElementById('ivform').style.display = 'none'; }
             else { msg.className = 'msg bad'; msg.textContent = j.error || '提交失败'; }
-          } catch (e) { msg.className = 'msg bad'; msg.textContent = '提交失败：' + e.message; }
-        };
-        document.getElementById('submit').onclick = async () => {
-          const dims = {}; document.querySelectorAll('select[data-dim]').forEach(s => { if (s.value) dims[s.dataset.dim] = s.value });
-          const body = { token: ${JSON.stringify(token)}, interviewer: document.getElementById('ivname').value,
-            pass: document.getElementById('pass').value === '1', score: document.getElementById('score').value,
-            note: document.getElementById('note').value, dims: Object.keys(dims).length ? dims : null };
-          const msg = document.getElementById('msg'); msg.textContent = '提交中…';
-          try {
-            const r = await fetch('/api/ai-recruiting/interviewer-submit', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
-            const j = await r.json();
-            if (j.ok) { msg.className = 'msg ok'; msg.textContent = '✅ ' + j.message; document.querySelector('.form').style.display='none'; }
-            else { msg.className = 'msg bad'; msg.textContent = j.error || '提交失败'; }
-          } catch (e) { msg.className = 'msg bad'; msg.textContent = '提交失败：' + e.message; }
+          } catch (err) { msg.className = 'msg bad'; msg.textContent = '提交失败：' + err.message; }
         };
       </script>`)
     return '<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>面试邀请 · ' + esc(brief ? brief.name : '') + '</title><style>' + interviewerPageCss() + '</style></head><body><div class="wrap">' + body + '</div></body></html>'
@@ -1415,7 +1436,59 @@ export function apply(ctx, config = {}) {
       '<div class="card"><h3>简历原文</h3><pre class="resume">' + esc(b.resume) + '</pre></div>'
   }
   function interviewerPageCss() {
-    return `*{box-sizing:border-box}body{margin:0;background:#0f1420;color:#e8eef8;font:14px/1.6 -apple-system,"PingFang SC",sans-serif}.wrap{max-width:720px;margin:0 auto;padding:16px}.hd h1{margin:8px 0 2px;font-size:20px}.hd .meta{color:#94a3c0;font-size:12px;margin-bottom:12px}.card{background:#1a2033;border:1px solid #2b3350;border-radius:12px;padding:14px 16px;margin-bottom:12px}.name{font-size:18px;font-weight:700}.tag{font-size:11px;background:#252d45;color:#94a3c0;border-radius:8px;padding:1px 8px;font-weight:400}.aihead{display:flex;gap:8px;align-items:center;margin-bottom:8px}.badge{font-size:11px;background:rgba(79,132,255,.18);color:#7aa2ff;border-radius:7px;padding:1px 9px;font-weight:600}.g{font-size:16px}.g,.g[data-g=C]{color:#f0ad4e}.sc{color:#94a3c0;font-size:12px}.sum{color:#c4cde0;font-size:12.5px}.db{color:#f0ad4e;font-size:12px;margin-top:6px}.dims{margin-top:8px}.dim{display:flex;gap:8px;align-items:center;font-size:12px;padding:3px 0;border-top:1px solid #252d45}.dn{flex:1;color:#c4cde0}.lv{font-weight:700;color:#7aa2ff}.resume{white-space:pre-wrap;font:12px/1.7 inherit;color:#aeb8cc;max-height:340px;overflow:auto;margin:0}.form label{display:block;margin:10px 0;font-size:12.5px;color:#c4cde0}.form input,.form select,.form textarea{width:100%;margin-top:4px;background:#0f1420;border:1px solid #2b3350;color:#e8eef8;border-radius:8px;padding:8px 10px;font:inherit}.form textarea{resize:vertical}.dimsec{margin:10px 0}.dt{font-size:12px;color:#94a3c0;margin-bottom:6px}.dr{display:flex;gap:8px;align-items:center;font-size:12px;margin:4px 0}.dr span{flex:1}.dr select{width:90px;flex:none}.form button{width:100%;background:#4f84ff;color:#fff;border:0;border-radius:9px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px}.msg{margin-top:8px;font-size:12.5px}.msg.ok{color:#34d399}.msg.bad{color:#f47171}.done{background:rgba(52,199,123,.12);border:1px solid rgba(52,199,123,.4);color:#34d399;padding:14px;border-radius:10px;margin-bottom:12px}.err{background:rgba(244,113,113,.1);border:1px solid rgba(244,113,113,.4);color:#f47171;padding:16px;border-radius:10px}.card h3{margin:0 0 8px;font-size:13px}.hint{font-size:11.5px;color:#94a3c0;margin-bottom:8px}.slot{display:flex;gap:6px;margin-bottom:6px}.slot input{flex:1}.slot .slotNote{flex:.8}.ghost{background:transparent!important;border:1px dashed #3b4568!important;color:#94a3c0!important;font-weight:400!important;padding:8px!important;font-size:12.5px!important}`
+    return `*{box-sizing:border-box}
+body{margin:0;background:#0e1320;color:#e8eef8;font:14px/1.6 -apple-system,"PingFang SC",sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:680px;margin:0 auto;padding:18px 16px 60px}
+.hd h1{margin:6px 0 3px;font-size:21px;letter-spacing:-.2px}
+.hd .meta{color:#8b97b3;font-size:12.5px;margin-bottom:14px}
+.card{background:#171d2e;border:1px solid #262e47;border-radius:14px;padding:16px 18px;margin-bottom:12px}
+.card h3{margin:0 0 4px;font-size:14px;font-weight:700}
+.name{font-size:19px;font-weight:700;display:flex;align-items:center;gap:9px}
+.tag{font-size:11px;background:#222a41;color:#8b97b3;border-radius:7px;padding:2px 9px;font-weight:500}
+.aihead{display:flex;gap:9px;align-items:center;margin-bottom:9px;flex-wrap:wrap}
+.badge{font-size:11px;background:rgba(79,132,255,.16);color:#7aa2ff;border-radius:7px;padding:2px 9px;font-weight:600}
+.g{font-size:17px;font-weight:800;color:#f0ad4e}
+.sc{color:#8b97b3;font-size:12px}
+.sum{color:#c2cbe0;font-size:12.5px;line-height:1.6}
+.db{color:#f0ad4e;font-size:12px;margin-top:7px}
+.dims{margin-top:10px;display:flex;flex-direction:column;gap:0}
+.dim{display:flex;gap:10px;align-items:center;font-size:12.5px;padding:6px 0;border-top:1px solid #222a41}
+.dim:first-child{border-top:0}
+.dn{flex:1;color:#c2cbe0}
+.lv{font-weight:700;color:#7aa2ff;font-variant-numeric:tabular-nums}
+.resume{white-space:pre-wrap;font:12px/1.75 inherit;color:#a7b1c7;max-height:320px;overflow:auto;margin:0}
+.hint{font-size:11.5px;color:#8b97b3;margin:2px 0 14px;line-height:1.5}
+.fld{display:block;margin:0 0 14px;font-size:12.5px;color:#b8c2d6}
+.fld input,.fld textarea,.fld select{width:100%;margin-top:6px;background:#0e1320;border:1px solid #2b3350;color:#e8eef8;border-radius:9px;padding:10px 12px;font:13.5px/1.5 inherit;transition:border-color .12s}
+.fld input:focus,.fld textarea:focus,.fld select:focus{outline:0;border-color:#4f84ff;box-shadow:0 0 0 3px rgba(79,132,255,.14)}
+.fld textarea{resize:vertical}
+.lb{display:block;margin-bottom:6px}
+.opt{color:#6f7c99;font-size:11px;margin-left:6px;font-weight:400}
+.seg{display:flex;gap:8px}
+.seg button{flex:1;background:#0e1320;border:1px solid #2b3350;color:#a7b1c7;border-radius:9px;padding:10px;font:13.5px inherit;cursor:pointer;transition:all .12s}
+.seg button:hover{border-color:#3b4568}
+.seg button.on{background:rgba(79,132,255,.16);border-color:#4f84ff;color:#9dbcff;font-weight:700}
+.dimsec{margin:0 0 14px;padding:12px 0 4px;border-top:1px solid #222a41}
+.dt{font-size:12px;color:#8b97b3;margin-bottom:9px}
+.dr{display:flex;gap:10px;align-items:center;font-size:12.5px;padding:5px 0}
+.dr .dn{flex:1;color:#c2cbe0}
+.dr .ai{font-size:11px;color:#7aa2ff;background:rgba(79,132,255,.12);border-radius:5px;padding:1px 7px;font-variant-numeric:tabular-nums}
+.dr select{width:96px;flex:none;background:#0e1320;border:1px solid #2b3350;color:#e8eef8;border-radius:8px;padding:6px 8px;font:12.5px inherit}
+.avail{margin:4px 0 14px;padding:14px;background:rgba(52,199,123,.06);border:1px solid rgba(52,199,123,.28);border-radius:11px}
+.avail.hidden{display:none}
+.availhead{font-size:12.5px;font-weight:700;color:#34d399;margin-bottom:3px}
+.slot{display:flex;gap:8px;margin-bottom:8px}
+.slot input{flex:1;background:#0e1320;border:1px solid #2b3350;color:#e8eef8;border-radius:9px;padding:9px 11px;font:13px inherit}
+.slot .slotNote{flex:.75}
+.ghost{width:100%;background:transparent;border:1px dashed #3b4568;color:#8b97b3;border-radius:9px;padding:9px;font:12.5px inherit;cursor:pointer;margin-bottom:12px}
+.ghost:hover{border-color:#4f84ff;color:#7aa2ff}
+#submit{width:100%;background:#4f84ff;color:#fff;border:0;border-radius:10px;padding:13px;font:14.5px inherit;font-weight:700;cursor:pointer;margin-top:4px;transition:filter .12s}
+#submit:hover{filter:brightness(1.08)}
+.msg{margin-top:11px;font-size:12.5px;text-align:center}
+.msg.ok{color:#34d399}.msg.bad{color:#f47171}
+.done{background:rgba(52,199,123,.11);border:1px solid rgba(52,199,123,.35);color:#34d399;padding:15px;border-radius:11px;margin-bottom:12px;font-size:13px}
+.err{background:rgba(244,113,113,.1);border:1px solid rgba(244,113,113,.35);color:#f47171;padding:16px;border-radius:11px;font-size:13px}
+@media(max-width:520px){.wrap{padding:12px}.card{padding:14px}.slot{flex-direction:column}}`
   }
 
   // ===== 评估 → 面试验证任务：把 BARS 评估结果转成「面试要验证什么」的结构化任务清单 =====
