@@ -358,7 +358,7 @@ export function buildDashboard(d, opts) {
   const metrics = readRows(join(d, 'metrics.jsonl'))
   const snap = {
     date: today, positions: ps.length, active, candidates: cs.length,
-    byStage, bySource, evaluated: evaluatedCount, hired, pendingDecision,
+    byStage, bySource, evaluated: evaluatedCount, hired, pendingDecision, talent: cs.filter(c => c.stage === '人才库').length,
     undetermined, traceable, calibration: cal.length, pipeline, cycle,
     hiring: ps.filter(p => p.status === '在招').map(p => ({ title: p.title, hc: p.hc || 1, hired: cs.filter(c => c.pid === p.id && c.stage === '已入职').length })),
     stageTime,
@@ -423,6 +423,7 @@ export function buildDashboard(d, opts) {
       PERIOD === 'all' ? prevNew : prevFlow.intake, '份', PERIOD === 'all' ? '近 7 天' : (periodLabel + '流量 · 环比上' + (PERIOD === 'week' ? '周' : '月'))),
     K('screenFail', 'AI 初筛淘汰', reached.failed, null, '份', reached.screened ? ('挡掉 ' + reached.failed + '/' + reached.screened + ' 份 · 免人工筛') : '免人工筛'),
     K('pending', '待人工拍板', needConfirm, prevSnap ? prevSnap.pendingDecision : null, '人', '必须人给结论'),
+    K('talent', '人才库沉淀', cs.filter(c => c.stage === '人才库').length, prevSnap ? prevSnap.talent : null, '人', '可激活复捞'),
     K('autoRate', '免人工率', autoRate, prevSnap && prevSnap.autoRate != null ? prevSnap.autoRate : null, '%', '执行环节'),
     K('calibration', '纠偏记录', cal.length, prevSnap ? prevSnap.calibration : null, '条', '标准收敛信号'),
   ]

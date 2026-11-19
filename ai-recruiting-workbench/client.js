@@ -2085,15 +2085,12 @@ window.__ModuleLoader__.load({
           })),
         h('div', { style: { fontSize: 10, color: C.muted, marginTop: 8 } },
           '周期：已入职岗位显示平均到岗天数；在途岗位显示在途者平均停留天数')))))
-      // AI 初筛分布（S/A/B/C）+ 改判率
+      // AI 初筛分布（环形图承载 S/A/B/C；改判率并入，避免同一数据两处展示）
       const aiP = dash.aiPerf || {}
       const gd = aiP.gradeDist || {}
       const gTotal = (gd.S || 0) + (gd.A || 0) + (gd.B || 0) + (gd.C || 0)
       if (gTotal) out.push(h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 } },
-        ...[['S 级', gd.S || 0, C.good], ['A 级', gd.A || 0, C.accent], ['B 级', gd.B || 0, C.warn], ['C 级', gd.C || 0, C.bad]].map(([lb, n, col]) => h('div', { key: lb, style: { flex: '1 1 100px', background: C.surface, borderRadius: 9, padding: '7px 10px' } },
-          h('div', { style: { fontSize: 11.5, color: C.muted } }, 'AI 初筛 ' + lb),
-          h('div', { style: { fontSize: 18, fontWeight: 800, color: col } }, String(n), h('span', { style: { fontSize: 10.5, color: C.muted, fontWeight: 400, marginLeft: 4 } }, gd && gTotal ? Math.round(n / gTotal * 100) + '%' : '')))),
-        h('div', { style: { flex: '1 1 120px', background: C.surface, borderRadius: 9, padding: '7px 10px' } },
+        h('div', { style: { flex: '1 1 100px', background: C.surface, borderRadius: 9, padding: '7px 10px' } },
           h('div', { style: { fontSize: 11.5, color: C.muted } }, '人工改判率'),
           h('div', { style: { fontSize: 18, fontWeight: 800, color: (aiP.correctionRate || 0) > 15 ? C.warn : C.good } }, (aiP.correctionRate != null ? aiP.correctionRate : 0) + '%', h('span', { style: { fontSize: 10.5, color: C.muted, fontWeight: 400, marginLeft: 4 } }, (aiP.corrections || 0) + ' 次纠偏')))))
       // 超时未动（流失风险）
@@ -2140,28 +2137,7 @@ window.__ModuleLoader__.load({
           h('span', { style: { color: C.muted } }, a.stage),
           h('span', { style: { marginLeft: 'auto', fontSize: 11.5, color: C.good } }, '待报到')))))
       // 近 14 天趋势（metrics 按日快照）
-      const trend = data.trend || []
-      if (trend.length >= 1) {
-        const W = 560, H = 110, pad = 8
-        const maxV = Math.max.apply(null, trend.map(t => Math.max(t.candidates || 0, t.evaluated || 0)).concat([1]))
-        const px = (i) => pad + i * (W - pad * 2) / Math.max(1, trend.length - 1)
-        const py = (v) => H - 14 - (v / maxV) * (H - 30)
-        const line = (key, color) => {
-          const pts = trend.map((t, i) => px(i) + ',' + py(t[key] || 0)).join(' ')
-          return h('polyline', { points: pts, fill: 'none', stroke: color, strokeWidth: 2, strokeLinejoin: 'round' })
-        }
-        analysisParts.push(h('div', { style: { ...card, marginTop: 10, padding: '12px 14px' } },
-          h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 } },
-            h('div', { style: { fontSize: 12.5, fontWeight: 700 } }, '▍近 14 天趋势'),
-            h('span', { style: { fontSize: 11.5, color: '#60a5fa' } }, '● 候选人总量'),
-            h('span', { style: { fontSize: 11.5, color: '#34d399' } }, '● 评估完成'),
-            h('span', { style: { fontSize: 11.5, color: C.muted } }, '按日快照累积')),
-          h('svg', { width: '100%', height: H, viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'none' },
-            line('candidates', '#60a5fa'), line('evaluated', '#34d399'),
-            ...trend.map((t, i) => h('g', { key: t.date },
-              h('circle', { cx: px(i), cy: py(t.candidates || 0), r: 2.5, fill: '#60a5fa' }),
-              h('circle', { cx: px(i), cy: py(t.evaluated || 0), r: 2.5, fill: '#34d399' }))))))
-      }
+      
       })()
       if (analysisParts.length) out.push(h('details', { style: { marginTop: 12 } },
         h('summary', { style: { cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: C.muted, padding: '6px 0', userSelect: 'none' } }, '▸ 更多数据分析'),
