@@ -264,7 +264,7 @@ export function apply(ctx, config = {}) {
         else {
           const s = fold(d); const c = s.byId[hit.candidateId] || {}
           const p = s.positions.find(x => x.id === c.pid) || {}
-          brief = { name: c.name || '', stage: c.stage || '', resume: String(c.resume || '').slice(0, 8000), pos: p.title || '',
+          brief = { name: c.name || '', stage: c.stage || '', resume: maskContact(String(c.resume || '').slice(0, 8000)), pos: p.title || '',
             round: hit.interview.round || '初试', at: hit.interview.at || '', place: hit.interview.place || '', interviewer: hit.interview.interviewer || '',
             grade: (c.deep && c.deep.grade) || '', score: c.weighted != null ? c.weighted : null, summary: c.summary || '',
             alignment: (c.deep && c.deep.alignment) || [], doubts: c.doubts || [],
@@ -278,6 +278,23 @@ export function apply(ctx, config = {}) {
   }))
   // ===== 面试官协作端点（凭 token 免登录：读档案 + 交面评）=====
   // 从所有 interview.scheduled 事件里按 token 找到 候选人+面试信息
+  // 面试官页面脱敏：该页面免登录可转发，绝不能暴露候选人联系方式。
+  // 保留姓名/经历/技能（面试判断必需），抹掉手机/邮箱/微信/身份证（面试用不到，泄露风险极高）。
+  function maskContact(text) {
+    let t = String(text || '')
+    // 手机号：保留前3后2
+    t = t.replace(/(1[3-9]\d)\d{6}(\d{2})/g, '$1******$2')
+    // 邮箱：保留首字母与域名
+    t = t.replace(/([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g, '$1***$2')
+    // 身份证
+    t = t.replace(/(\d{6})\d{8}(\d{3}[\dXx])/g, '$1********$2')
+    // 微信/QQ 号：标签后的一串字母数字
+    t = t.replace(/(微信|WeChat|wechat|QQ|qq)\s*[:：]\s*[A-Za-z0-9_-]{4,}/g, '$1：***')
+    // 电话/手机 标签后的裸数字串
+    t = t.replace(/(电话|手机|联系方式|联系电话)\s*[:：]\s*[\d\s\-]{7,}/g, '$1：***')
+    return t
+  }
+
   function findByInterviewToken(d, token) {
     if (!token) return null
     const evs = readEvents(d)
@@ -311,7 +328,7 @@ export function apply(ctx, config = {}) {
     const done = readEvents(d).some(e => e.type === 'feedback.submitted' && (e.subject || {}).id === cid && (e.payload || {}).byInterviewer)
     return {
       candidateId: cid, name: c.name || '', stage: c.stage || '', pos: p.title || '',
-      resume: String(c.resume || '').slice(0, 6000), round: round || '初试', place: place || '', interviewer: interviewer || '',
+      resume: maskContact(String(c.resume || '').slice(0, 6000)), round: round || '初试', place: place || '', interviewer: interviewer || '',
       grade: (c.deep && c.deep.grade) || '', score: c.weighted != null ? c.weighted : null,
       summary: c.summary || '', alignment: (c.deep && c.deep.alignment) || [], doubts: c.doubts || [], already: done,
     }
