@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildDashboard } from './dashboard.js'
 import { scrub, hash } from './util.js'
-import { handleUpload, drill, archive } from './intake.js'
+import { handleUpload, drill, archive, DEFAULT_PY } from './intake.js'
 import {
   appendEvent, fold, project, replay, standardVersions, migrateLegacy, recordAssessment,
   HUMAN_CONTRACT, MACHINE_CONTRACT, readEvents,
@@ -825,7 +825,7 @@ export function apply(ctx, config = {}) {
         const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
         const fname = ({ offer: 'Offer函', eval: '面试评估表', report: '候选人评估报告' })[kind] || '文档'
         const outPath = join(outDir, fname + '_' + (c.name || c.id) + '_' + stamp + '.docx')
-        const PY = process.env.RECRUIT_PYTHON || '/Users/andyzhang/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/python/bin/python3'
+        const PY = process.env.RECRUIT_PYTHON || process.env.DSH_PYTHON || (config && config.pythonPath) || DEFAULT_PY
         const script = fileURLToPath(new URL('./gen_docs.py', import.meta.url))
         const r = spawnSync(PY, [script], { input: JSON.stringify({ kind, out: outPath, data }), encoding: 'utf8', timeout: 60000, maxBuffer: 8 * 1024 * 1024 })
         let j = null
@@ -960,7 +960,7 @@ export function apply(ctx, config = {}) {
       try {
         const { spawnSync } = await import('node:child_process')
         const py = config.pythonPath || process.env.DSH_PYTHON
-          || '/Users/andyzhang/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/python/bin/python3'
+          || DEFAULT_PY
         const d = dataDir()
         const cfgPath = join(d, 'mail.json')
         const args = [join(SCRIPT_DIR, 'fetch_mail.py'), '--config', cfgPath]

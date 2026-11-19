@@ -1,10 +1,12 @@
 /* 账本不变量扫描：直接检查真实 events.jsonl 的健康度（只读，不修改）。
    用途：部署后/日常巡检，发现历史遗留的坏数据与逻辑漏洞。
    运行：node tests/ledger-check.mjs [dataDir] */
-import { fold, readEvents } from '../ledger.js'
+import { fold, readEvents, STAGES as STAGES_SRC } from '../ledger.js'
 
 const D = process.argv[2] || '/Users/andyzhang/Documents/AI招聘工作她/recruiting'
-const STAGES = ['已接入', '待评估', '已评估', '待初试', '初试中', '待复试', '复试中', '待发 Offer', 'Offer', '已入职', '已淘汰', '人才库']
+// 阶段清单从 ledger.js 导入（单一来源）；历史遗留阶段名单独列出，避免手写列表漂移
+const STAGES = STAGES_SRC
+const LEGACY_STAGES = ['已接入', '已评估', 'Offer']
 // 允许的自动推进目标（agent 只能推进到这里；待发 Offer 必须由人的面评/决策产生）
 const AGENT_ALLOWED = ['待评估', '已评估', '待初试', '已淘汰']
 // 历史阶段别名（fold 通过 STAGE_MIGRATE 迁移，不算非法）
@@ -22,7 +24,7 @@ console.log('账本扫描：' + D + '\n事件 ' + evs.length + ' 条 · 候选�
 for (const e of evs) {
   if (e.type === 'stage.advanced') {
     const to = (e.payload || {}).to
-    if (STAGES.indexOf(to) < 0 && !LEGACY[to]) report('high', '#' + e.seq + ' 非法阶段 "' + to + '"')
+    if (STAGES.indexOf(to) < 0 && !LEGACY[to] && LEGACY_STAGES.indexOf(to) < 0) report('high', '#' + e.seq + ' 非法阶段 "' + to + '"')
   }
 }
 // 2. agent 越权推进（历史 auto_assess 硬推待发 Offer 类）

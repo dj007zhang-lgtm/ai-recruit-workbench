@@ -893,6 +893,18 @@ export function performAction(d, a) {
       })
       return { ok: true, seq: ev.seq, action, message: `${c.name} 文本已补录（${text.length} 字）` }
     }
+    case 'rollback_hire': {
+      // 撤销入职（误操作纠正）：append-only，追加补偿事件退回「待入职」
+      if (c.stage !== '已入职') throw new Error('仅已入职的人可撤销入职')
+      const reason = String(a.reason || '误操作撤销入职').slice(0, 200)
+      const ev = appendEvent(d, {
+        type: 'stage.advanced', actor: 'human', actorId: 'hr',
+        subject: { kind: 'candidate', id: c.id },
+        payload: { to: '待入职', reason: '撤销入职（补偿事件）：' + reason, compensates: lastSeq },
+        causedBy: lastSeq,
+      })
+      return { ok: true, seq: ev.seq, action, to: '待入职', message: c.name + ' 已撤销入职 → 待入职（补偿事件 #' + ev.seq + '）' }
+    }
     case 'rollback': {
       // append-only 账本不删除事件，追加一条补偿事件把状态退回。
       const ev = appendEvent(d, {

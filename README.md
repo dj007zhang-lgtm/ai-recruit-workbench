@@ -11,15 +11,33 @@
 git clone https://github.com/dj007zhang-lgtm/ai-recruit-workbench.git
 cd ai-recruit-workbench
 
-# 2. 安装 Python 依赖（PDF 解析）
-pip3 install pdfminer.six
+# 2. 安装 Python 依赖（PDF 简历解析）
+pip3 install -r ai-recruiting-workbench/requirements.txt
 
-# 3. 把插件链接进 DSH profile（路径按你的 DSH 安装调整）
+# 3. 把插件链接进 DSH profile
 mkdir -p ~/.dsh/profiles/desktop/node_modules/@local
 ln -s "$(pwd)/ai-recruiting-workbench" ~/.dsh/profiles/desktop/node_modules/@local/ai-recruiting-workbench
 
 # 4. 重启 DeepSeek Harness → 左侧「AI 招聘工作台」出现即成功
 ```
+
+**零配置项**（开箱即用，无需改代码）：
+
+| 项 | 默认行为 | 覆盖方式 |
+|---|---|---|
+| 数据目录 | 自动用 `<工作区>/recruiting` | 环境变量 `RECRUIT_DATA_DIR` 或插件配置 `dataDir` |
+| Python 解释器 | 自动从 DSH 运行时探测 | 环境变量 `RECRUIT_PYTHON` / `DSH_PYTHON` 或配置 `pythonPath` |
+| LLM 通道 | 自动跟随 DSH 当前会话模型；失败自动换可用通道 | 配置 `jdProvider` / `jdModel` 固定 |
+
+## 核心能力
+
+- **简历接入即分流**：脱敏 → 三键去重（姓名/手机/邮箱+内容指纹）→ 技术栈预检 → 自动匹配岗位 → BARS 初筛 → 按结论归位（S/A 进初试、C 自动淘汰、B 留人判断）
+- **BARS 逐维判档**：LLM 只判 L0-L3 档位并引用简历原文，分数与评级由代码计算（可追溯、可复现）；硬门槛规则预检不过直接淘汰，不烧 LLM
+- **面试官协作**：批量转发聚合成**一个链接**覆盖多人；面试官逐人判断（通过给可用时间区间 / 不通过必填理由），判不通过**同步淘汰**并留痕
+- **面试 Copilot**：按 AI 疑点生成 STAR 四段追问（情境/任务/行动/结果）+ BEI 行为事件问题
+- **交付物导出**：Offer 函 / 面试评估表 / 候选人报告（数据全部来自账本，不臆造）
+- **实时看板**：周/月/周期环比、岗位级漏斗矩阵、渠道转化、AI 判档分布、可下载 CSV
+- **校准闭环**：人的纠偏产出规范版本建议（不是改分），历史结论可复现
 
 ## 已知限制
 

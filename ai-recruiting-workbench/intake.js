@@ -9,7 +9,42 @@ import { scrub, hash } from './util.js'
 import { techStackFit } from './deepscore.js'
 
 import { SOURCES } from './ledger.js'
-const DEFAULT_PY = '/Users/andyzhang/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/python/bin/python3'
+// Python 解释器探测（跨机器可移植）：不再硬编码某台机器的绝对路径。
+// 优先级：显式配置 > 环境变量 > DSH 运行时目录推导 > 系统 python3
+function resolvePython(explicit) {
+  if (explicit && String(explicit).trim()) return String(explicit).trim()
+  if (process.env.RECRUIT_PYTHON) return process.env.RECRUIT_PYTHON
+  if (process.env.DSH_PYTHON) return process.env.DSH_PYTHON
+  // 从 DSH 安装目录推导：<...>/node_modules/@deepseek-ai/dsh → 向上找 dsh-runtimes/*/dependencies/python/bin/python3
+  const roots = []
+  if (process.env.DSH_INSTALL_DIR) roots.push(process.env.DSH_INSTALL_DIR)
+  if (process.env.HOME) roots.push(process.env.HOME + '/.dsh')
+  for (const root of roots) {
+    let dir = root
+    for (let up = 0; up < 8; up++) {
+      for (const cand of ['dependencies/python/bin/python3', 'dsh-runtimes/dsh-primary-runtime/dependencies/python/bin/python3']) {
+        const p = join(dir, cand)
+        try { if (existsSync(p)) return p } catch (e) {}
+      }
+      // 扫 dsh-runtimes 下的 runtime 目录
+      try {
+        const rt = join(dir, 'dsh-runtimes')
+        if (existsSync(rt)) {
+          for (const name of readdirSync(rt)) {
+            const p = join(rt, name, 'dependencies/python/bin/python3')
+            if (existsSync(p)) return p
+          }
+        }
+      } catch (e) {}
+      const parent = join(dir, '..')
+      if (parent === dir) break
+      dir = parent
+    }
+  }
+  return 'python3'   // 最后兜底：系统 python3（要求用户 pip install pdfminer.six）
+}
+export const DEFAULT_PY = resolvePython()
+export { resolvePython }
 
 function safe(s) { return String(s || 'attachment').replace(/[/\\:*?"<>|\r\n\t]/g, '_').slice(0, 120) }
 

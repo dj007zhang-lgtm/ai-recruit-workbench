@@ -1,0 +1,8 @@
+# AI 招聘工作台 · Python 依赖
+# 安装：pip3 install -r requirements.txt
+#
+# 说明：
+# - pdfminer.six：PDF 简历解析（vendor/bin/pdf2txt.py 依赖它）
+# - 其余为 DSH 运行时已内置的常用库，按需安装
+
+pdfminer.six>=20221105

@@ -1,6 +1,6 @@
 {
   "name": "@local/ai-recruiting-workbench",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "AI recruiting workbench harness plugin: append-only event ledger, human/machine contracts, interactive inbox workbench (adopt/ask/override/eliminate/offer/rollback), causal replay, versioned standards, and a live dashboard with period-over-period deltas.",

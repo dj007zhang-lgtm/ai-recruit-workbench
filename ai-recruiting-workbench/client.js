@@ -1484,9 +1484,14 @@ window.__ModuleLoader__.load({
         '待复试': [['interview', '安排复试'], ELIM],
         '复试中': [['copilot', '🎯 面试准备'], ['feedback', '录复试面评'], ELIM],
         '待背调': [['backcheck', '录入背调结论'], ELIM],
+        // 待发 Offer：背调通过后必须能发 Offer（此前是死角，流程卡死）
+        '待发 Offer': [['send_offer', '发 Offer'], ELIM],
         'Offer已发': [['accept', '候选人已接受'], ['decline', '被拒 / 放弃'], ELIM],
         'Offer已接受': [['onboard', '安排入职'], ELIM],
         '待入职': [['hire', '确认入职'], ELIM],
+        // 终态：给出可执行的下一步（已入职可回滚、Offer拒绝可激活、已淘汰/人才库可激活）
+        '已入职': [['rollback_hire', '撤销入职（回滚）']],
+        'Offer拒绝': [['activate', '重新激活'], ['elim', '归档淘汰']],
         '人才库': [['activate', '重新激活']], '已淘汰': [['activate', '重新激活']],
       }[c.stage] || []
       if (flow.length) seg('流程动作', () => out.push(h(Block, { title: '流程动作' },
@@ -1496,6 +1501,7 @@ window.__ModuleLoader__.load({
             if (k === 'adopt') { run({ action: 'adopt', candidateId: c.id }); return }
             if (k === 'activate') { run({ action: 'activate', candidateId: c.id, reason: '重新激活' }); return }
             if (k === 'elim') { setPanel('elim'); return }
+            if (k === 'rollback_hire') { if (window.confirm('确认撤销 ' + c.name + ' 的入职状态？会退回「待入职」。')) run({ action: 'rollback_hire', candidateId: c.id, reason: '人工撤销入职' }); return }
             // k 可能已带 flow: 前缀（quick 数组）也可能不带（详情页 flow 数组）→ 统一剥离后只加一次
             const bare = String(k).indexOf('flow:') === 0 ? String(k).slice(5) : String(k)
             setPanel('flow:' + bare)
