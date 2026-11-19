@@ -27,7 +27,7 @@ function dirOf(ctx, exec, config) {
   // 账本只有一个位置：显式数据目录优先。工具与 HTTP 路由必须读同一份事实，
   // 否则「沉淀」会分裂成两本账。会话 cwd 仅作未配置时的回退。
   if (process.env.RECRUIT_DATA_DIR) return process.env.RECRUIT_DATA_DIR
-  if (config && config.dataDir) return config.dataDir
+  if (config && String(config.dataDir || '').trim()) return String(config.dataDir).trim()
   try {
     if (exec && exec.agent && ctx.workingDirectory) {
       const base = ctx.workingDirectory.get(exec.agent.session)
@@ -56,7 +56,7 @@ const SCRIPT_DIR = fileURLToPath(new URL('.', import.meta.url))
 export function apply(ctx, config = {}) {
   const dispose = []
   const dataDir = () => process.env.RECRUIT_DATA_DIR
-    || (config && config.dataDir)
+    || (config && String(config.dataDir || '').trim())
     || join((ctx.workingDirectory && ctx.workingDirectory.defaultDirectory) || process.cwd(), 'recruiting')
   const tool = (name, description, parameters, run, format) => {
     dispose.push(ctx.tools.register({
@@ -860,8 +860,8 @@ export function apply(ctx, config = {}) {
       _llmRoute = null
     }
     // ② 插件显式配置
-    if (config && config.jdProvider && config.jdModel) {
-      const r = await _tryCall(llm, config.jdProvider, config.jdModel, 'ok')
+    if (config && String(config.jdProvider || '').trim() && String(config.jdModel || '').trim()) {
+      const r = await _tryCall(llm, String(config.jdProvider).trim(), String(config.jdModel).trim(), 'ok')
       if (r.ok) { _llmRoute = { llm, provider: config.jdProvider, model: config.jdModel, source: 'config', alive: true }; return _llmRoute }
     }
     // ③ 自动探测其他可用通道（降级但不改用户选择）

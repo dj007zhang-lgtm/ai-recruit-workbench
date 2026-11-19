@@ -2,5 +2,10 @@
     - id: ai-recruiting-workbench
       name: '@local/ai-recruiting-workbench'
       config:
-        # 留空 = 自动用 <工作区>/recruiting；也可用环境变量 RECRUIT_DATA_DIR 覆盖
+        # 数据目录：留空则自动用 <DSH 工作区>/recruiting（推荐，换机器无需改配置）
+        # 也可设环境变量 RECRUIT_DATA_DIR 覆盖，或在此填绝对路径
         dataDir: ''
+        # LLM 路由：留空 = 自动跟随 DSH 当前会话模型（推荐）
+        # 如需固定，填 provider 与 model，例如 magpie / trae-cn/deepseek-v4.1-flash-max
+        jdProvider: ''
+        jdModel: ''
