@@ -249,8 +249,16 @@ export function apply(ctx, config = {}) {
     resource: async (request) => {
       const u = new URL(request.url); const token = u.searchParams.get('token') || ''
       let brief = null, errMsg = ''
+      const esc0 = (x) => String(x == null ? '' : x).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]))
       try {
         const d = dataDir(); ensure(d); migrateLegacy(d)
+        // 批量 token（bt 开头）：一个链接覆盖多个候选人 → 渲染候选人列表页
+        const batch = findByBatchToken(d, token)
+        if (batch) {
+          const s0 = fold(d)
+          const list = batch.candidateIds.map(cid => briefForCandidate(d, s0, cid, batch.round, batch.place, batch.interviewer))
+          return new Response(interviewerBatchHtml(token, batch, list, esc0), { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } })
+        }
         const hit = findByInterviewToken(d, token)
         if (!hit) errMsg = '链接无效或已过期，请联系招聘HR重新获取。'
         else {
@@ -280,6 +288,33 @@ export function apply(ctx, config = {}) {
       }
     }
     return null
+  }
+
+  // 批量协作 token：一个链接覆盖多个候选人（同一面试官看一批人）
+  function findByBatchToken(d, token) {
+    if (!token || token.indexOf('bt') !== 0) return null
+    const evs = readEvents(d)
+    for (let i = evs.length - 1; i >= 0; i--) {
+      const e = evs[i]
+      if (e.type === 'interviewer.batch' && (e.payload || {}).token === token) {
+        const p = e.payload || {}
+        return { token, candidateIds: p.candidateIds || [], interviewer: p.interviewer || '', round: p.round || '初试', place: p.place || '', seq: e.seq }
+      }
+    }
+    return null
+  }
+
+  // 单个候选人的面试简报（批量页面里每人一份）
+  function briefForCandidate(d, s, cid, round, place, interviewer) {
+    const c = s.byId[cid] || {}
+    const p = s.positions.find(x => x.id === c.pid) || {}
+    const done = readEvents(d).some(e => e.type === 'feedback.submitted' && (e.subject || {}).id === cid && (e.payload || {}).byInterviewer)
+    return {
+      candidateId: cid, name: c.name || '', stage: c.stage || '', pos: p.title || '',
+      resume: String(c.resume || '').slice(0, 6000), round: round || '初试', place: place || '', interviewer: interviewer || '',
+      grade: (c.deep && c.deep.grade) || '', score: c.weighted != null ? c.weighted : null,
+      summary: c.summary || '', alignment: (c.deep && c.deep.alignment) || [], doubts: c.doubts || [], already: done,
+    }
   }
   dispose.push(ctx.webServer.register({
     kind: 'exact', path: '/api/ai-recruiting/interviewer-get',
@@ -340,32 +375,61 @@ export function apply(ctx, config = {}) {
   dispose.push(ctx.webServer.register({
     kind: 'exact', path: '/api/ai-recruiting/batch-invite-interviewer',
     handler: async (req, res) => {
-      // 批量转发给面试官：为一批「待初试」候选人生成协作链接（每人一个 token），供一次性转发。
-      // 存在理由：HR 常见动作是"把这批人一起发给用人经理看"，逐个点链接转发太低效。
+      // 批量转发给面试官：聚合成「一个链接」覆盖多个候选人。
+      // 存在理由：同一个面试官看一批人时，给 N 个链接意味着 N 次打开/切换，实际没人这么用。
+      // 聚合后：面试官打开一个页面 → 看到全部候选人 → 逐个评价 → 一次提交全部。
       const a = await readPost(req, res, 32 * 1024)
       if (a === null) return
       try {
         const d = dataDir(); ensure(d); migrateLegacy(d)
         const s = fold(d)
-        const ids = Array.isArray(a.candidateIds) ? a.candidateIds.slice(0, 50) : []
+        const ids = (Array.isArray(a.candidateIds) ? a.candidateIds : []).filter(id => s.byId[id]).slice(0, 30)
         if (!ids.length) return replyJson(res, 400, { ok: false, error: '请选择要转发的候选人' })
         const interviewer = String(a.interviewer || '').slice(0, 20)
         const round = String(a.round || '初试')
         const place = String(a.place || '')
-        // 关键：不能用前端 window.location.origin（DSH 桌面端是 dsh-app://app 自定义协议，浏览器打不开）。
-        // webServer.getOrigin() 返回真实 HTTP 监听地址（如 http://127.0.0.1:55050）。
-        const baseUrl = publicOrigin() || String(a.baseUrl || '').replace(/\/+$/, '')
-        const out = []
+        const token = 'bt' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+        appendEvent(d, { type: 'interviewer.batch', actor: 'human', subject: { kind: 'batch', id: token },
+          payload: { token, candidateIds: ids, interviewer, round, place, createdAt: new Date().toISOString() } })
         for (const cid of ids) {
-          const c = s.byId[cid]
-          if (!c) continue
-          const token = 'iv' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
-          // 写 interview.scheduled 事件建立 token 关联（不推进阶段，阶段仍由后续排期推进）
           appendEvent(d, { type: 'interview.scheduled', actor: 'human', subject: { kind: 'candidate', id: cid },
-            payload: { at: '', place, interviewer, round, token, sharedForReview: true, note: '批量转发给面试官评估' } })
-          out.push({ candidateId: cid, name: c.name || '', stage: c.stage || '', url: baseUrl + '/api/ai-recruiting/interview?token=' + token, token })
+            payload: { at: '', place, interviewer, round, token, batchToken: token, sharedForReview: true, note: '批量转发给面试官评估' } })
         }
-        replyJson(res, 200, { ok: true, count: out.length, items: out })
+        const base = publicOrigin()
+        replyJson(res, 200, { ok: true, count: ids.length, token, url: base + '/api/ai-recruiting/interview?token=' + token,
+          names: ids.map(id => (s.byId[id] || {}).name || id) })
+      } catch (e) { replyJson(res, 400, { ok: false, error: String(e && e.message || e) }) }
+    },
+  }))
+  dispose.push(ctx.webServer.register({
+    kind: 'exact', path: '/api/ai-recruiting/interviewer-submit-candidate',
+    handler: async (req, res) => {
+      // 批量页面里的单个候选人提交：token 是批量 token，candidateId 指明评的是谁。
+      // 校验：该候选人必须属于这个批量 token，防止越权评价他人。
+      const a = await readPost(req, res, 64 * 1024)
+      if (a === null) return
+      try {
+        const d = dataDir(); ensure(d); migrateLegacy(d)
+        const batch = findByBatchToken(d, String(a.token || ''))
+        if (!batch) return replyJson(res, 404, { ok: false, error: '链接无效或已过期' })
+        const cid = String(a.candidateId || '')
+        if (batch.candidateIds.indexOf(cid) < 0) return replyJson(res, 403, { ok: false, error: '该候选人不在本次评审范围内' })
+        const c = fold(d).byId[cid]
+        if (!c) return replyJson(res, 400, { ok: false, error: '候选人不存在' })
+        const name = String(a.interviewer || batch.interviewer || '面试官').trim().slice(0, 20)
+        const ev = appendEvent(d, { type: 'feedback.submitted', actor: 'human', subject: { kind: 'candidate', id: cid },
+          payload: { interviewer: name, interviewerToken: String(a.token || ''), batchToken: String(a.token || ''), byInterviewer: true, round: batch.round,
+            score: a.score == null || a.score === '' ? null : Number(a.score), pass: a.pass !== false, note: String(a.note || '').slice(0, 1000),
+            dims: (a.dims && typeof a.dims === 'object' && !Array.isArray(a.dims)) ? Object.keys(a.dims).map(k => ({ dim: k, level: a.dims[k] })) : (a.dims || null) }, causedBy: batch.seq })
+        let availSeq = null
+        const slots = Array.isArray(a.slots) ? a.slots.filter(x => x && x.at).map(x => ({ at: String(x.at).slice(0, 20), note: String(x.note || '').slice(0, 60) })).slice(0, 10) : []
+        const availNote = String(a.availNote || '').slice(0, 500)
+        if (slots.length || availNote.trim()) {
+          const ev2 = appendEvent(d, { type: 'interviewer.availability', actor: 'human', subject: { kind: 'candidate', id: cid },
+            payload: { interviewer: name, interviewerToken: String(a.token || ''), batchToken: String(a.token || ''), round: batch.round, slots, note: availNote }, causedBy: ev.seq })
+          availSeq = ev2.seq
+        }
+        replyJson(res, 200, { ok: true, seq: ev.seq, availSeq, message: '已提交' })
       } catch (e) { replyJson(res, 400, { ok: false, error: String(e && e.message || e) }) }
     },
   }))
@@ -1429,6 +1493,83 @@ export function apply(ctx, config = {}) {
       </script>`)
     return '<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>面试邀请 · ' + esc(brief ? brief.name : '') + '</title><style>' + interviewerPageCss() + '</style></head><body><div class="wrap">' + body + '</div></body></html>'
   }
+  // 批量协作页面：一个链接看一批候选人，逐个评价后一次提交。
+  // 设计：左侧候选人列表（点击切换）+ 右侧评价表单；已评的标记出来，避免重复劳动。
+  function interviewerBatchHtml(token, batch, list, esc) {
+    const lvOpts = ['L0', 'L1', 'L2', 'L3'].map(l => '<option value="' + l + '">' + l + '</option>').join('')
+    const items = list.map((b, i) => `
+      <div class="ivitem" data-i="${i}">
+        <div class="ivl"><span class="ivn">${esc(b.name)}</span><span class="ivg ${b.grade ? 'g' + b.grade : ''}">${b.grade ? esc(b.grade) + ' 级' : '未评'}</span>${b.already ? '<span class="ivdone">已提交</span>' : ''}</div>
+        <div class="ivs">${esc(b.summary || '').slice(0, 60)}</div>
+      </div>`).join('')
+    const panels = list.map((b, i) => `
+      <div class="panel" data-i="${i}" ${i === 0 ? '' : 'style="display:none"'}>
+        ${interviewBriefHtml(b, esc)}
+        <form class="card form" data-cid="${esc(b.candidateId)}" data-i="${i}">
+          <h3>提交面试评价</h3>
+          <div class="hint">推荐通过后，再填写可面试时间</div>
+          <label class="fld">你的姓名<input class="ivname" placeholder="面试官姓名" value="${esc(batch.interviewer)}"></label>
+          <div class="fld"><span class="lb">面试结论</span>
+            <div class="seg"><button type="button" data-v="1" class="on">推荐通过</button><button type="button" data-v="0">不通过</button></div>
+          </div>
+          <div class="dimsec"><div class="dt">逐维评档（可选，对照上方 AI 判档）</div>
+            ${(b.alignment || []).map(a => `<div class="dr"><span class="dn">${esc(a.dim)}</span><span class="ai">AI ${esc(a.level || '—')}</span><select data-dim="${esc(a.dim)}"><option value="">不评</option>${lvOpts}</select></div>`).join('')}
+          </div>
+          <label class="fld">综合评分<span class="opt">可选 0-100</span><input class="score" type="number" min="0" max="100" placeholder="如 80"></label>
+          <label class="fld">面评意见<textarea class="note" rows="3" placeholder="技术栈深度 / 项目真实性 / 沟通表达 / 风险点…"></textarea></label>
+          <div class="avail hidden">
+            <div class="availhead">推荐通过，请填写可面试时间</div>
+            <div class="hint">招聘方据此排期，可填多个时段</div>
+            <div class="slots"><div class="slot"><input type="datetime-local" class="slotTime"><input type="text" class="slotNote" placeholder="备注（线上/线下）"></div></div>
+            <button type="button" class="addslot ghost">+ 再加一个时段</button>
+            <label class="fld">时间偏好<span class="opt">可选</span><textarea class="availNote" rows="2" placeholder="如：工作日晚上均可"></textarea></label>
+          </div>
+          <button type="submit" class="sub">提交给招聘团队</button>
+          <div class="msg"></div>
+        </form>
+      </div>`).join('')
+    return '<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>候选人评审 · ' + list.length + ' 人</title><style>' + interviewerPageCss() + `
+.wrap{max-width:1080px}
+.blayout{display:grid;grid-template-columns:264px 1fr;gap:14px;align-items:start}
+@media(max-width:820px){.blayout{grid-template-columns:1fr}}
+.ivlist{position:sticky;top:14px;background:#171d2e;border:1px solid #262e47;border-radius:14px;padding:8px;max-height:88vh;overflow:auto}
+.ivitem{padding:9px 11px;border-radius:9px;cursor:pointer;transition:background .12s;border:1px solid transparent}
+.ivitem:hover{background:#1e2537}
+.ivitem.on{background:rgba(79,132,255,.14);border-color:rgba(79,132,255,.4)}
+.ivl{display:flex;align-items:center;gap:7px;margin-bottom:2px}
+.ivn{font-size:13px;font-weight:600}
+.ivg{font-size:10px;border-radius:5px;padding:0 6px;background:#222a41;color:#8b97b3}
+.ivg.gS,.ivg.gA{background:rgba(52,199,123,.16);color:#34d399}
+.ivg.gB{background:rgba(240,173,78,.16);color:#f0ad4e}
+.ivg.gC{background:rgba(244,113,113,.16);color:#f47171}
+.ivdone{font-size:9.5px;color:#34d399;margin-left:auto}
+.ivs{font-size:10.5px;color:#8b97b3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bhead{margin-bottom:12px}
+.bhead h1{margin:0 0 3px;font-size:19px}
+.bhead .m{color:#8b97b3;font-size:12px}` + '</style></head><body><div class="wrap">' +
+      '<div class="bhead"><h1>候选人评审</h1><div class="m">' + esc(batch.round) + ' · 共 ' + list.length + ' 人' + (batch.interviewer ? ' · 面试官 ' + esc(batch.interviewer) : '') + (batch.place ? ' · ' + esc(batch.place) : '') + '</div></div>' +
+      '<div class="blayout"><div class="ivlist">' + items + '</div><div>' + panels + '</div></div></div>' +
+      '<script>' +
+      'var SLOT_HTML="<input type=datetime-local class=slotTime><input type=text class=slotNote placeholder=备注>";' +
+      'var items=document.querySelectorAll(".ivitem"),panels=document.querySelectorAll(".panel");' +
+      'items.forEach(function(it){it.onclick=function(){items.forEach(function(x){x.classList.remove("on")});panels.forEach(function(x){x.style.display="none"});it.classList.add("on");var pnl=panels[parseInt(it.dataset.i,10)];if(pnl)pnl.style.display=""}})};' +
+      'if(items[0])items[0].classList.add("on");' +
+      'document.querySelectorAll(".form").forEach(function(form){' +
+      '  var pass="1";var segBtns=form.querySelectorAll(".seg button");' +
+      '  segBtns.forEach(function(b){b.onclick=function(){segBtns.forEach(function(x){x.classList.remove("on")});b.classList.add("on");pass=b.dataset.v;var av=form.querySelector(".avail");if(pass==="1")av.classList.remove("hidden");else av.classList.add("hidden")}})};' +
+      '  form.querySelector(".addslot").onclick=function(){var sl=form.querySelector(".slots");var dv=document.createElement("div");dv.className="slot";dv.innerHTML=SLOT_HTML;sl.appendChild(dv)};' +
+      '  form.onsubmit=async function(e){e.preventDefault();var msg=form.querySelector(".msg");var dims={};' +
+      '    form.querySelectorAll("select[data-dim]").forEach(function(s){if(s.value)dims[s.dataset.dim]=s.value});' +
+      '    var slots=[];if(pass==="1"){form.querySelectorAll(".slot").forEach(function(r){var t=r.querySelector(".slotTime").value;if(t)slots.push({at:t,note:r.querySelector(".slotNote").value||""})})}' +
+      '    var body={token:' + JSON.stringify(token) + ',interviewer:form.querySelector(".ivname").value,pass:pass==="1",score:form.querySelector(".score").value,note:form.querySelector(".note").value,dims:Object.keys(dims).length?dims:null,slots:slots,availNote:pass==="1"?form.querySelector(".availNote").value:""};' +
+      '    msg.className="msg";msg.textContent="提交中…";' +
+      '    try{var r=await fetch("/api/ai-recruiting/interviewer-submit-candidate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign({candidateId:form.dataset.cid},body))});var j=await r.json();' +
+      '      if(j.ok){msg.className="msg ok";msg.textContent="✅ "+j.message;form.style.display="none";var it=items[form.dataset.i];if(it){var d=document.createElement("span");d.className="ivdone";d.textContent="已提交";it.querySelector(".ivl").appendChild(d)}}' +
+      '      else{msg.className="msg bad";msg.textContent=j.error||"提交失败"}}catch(err){msg.className="msg bad";msg.textContent="提交失败："+err.message}}' +
+      '});' +
+      '</script></body></html>'
+  }
+
   function interviewBriefHtml(b, esc) {
     const ai = '<div class="card ai"><div class="aihead"><span class="badge">AI 初筛</span>' + (b.grade ? '<b class="g">' + esc(b.grade) + ' 级</b>' : '') + (b.score != null ? '<span class="sc">' + esc(b.score) + ' 分</span>' : '') + '</div>' + (b.summary ? '<div class="sum">' + esc(b.summary).slice(0, 200) + '</div>' : '') + ((b.doubts && b.doubts.length) ? '<div class="db">⚠ 疑点：' + esc(b.doubts.join(' / ')) + '</div>' : '') + ((b.alignment && b.alignment.length) ? '<div class="dims">' + b.alignment.map(a => '<div class="dim"><span class="dn">' + esc(a.dim) + '</span><span class="lv">' + esc(a.level || '—') + '</span></div>').join('') + '</div>' : '') + '</div>'
     return '<div class="hd"><h1>面试邀请</h1><div class="meta">' + esc(b.pos) + ' · ' + esc(b.round) + (b.at ? ' · ' + esc(b.at) : '') + (b.place ? ' · ' + esc(b.place) : '') + '</div></div>' +

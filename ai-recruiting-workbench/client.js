@@ -393,8 +393,10 @@ window.__ModuleLoader__.load({
         finally { setBusy(false) }
       }
       const copyAll = () => {
-        const txt = (links || []).map((x, i) => (i + 1) + '. ' + x.name + '\uFF08' + x.stage + '\uFF09' + String.fromCharCode(10) + x.url).join(String.fromCharCode(10, 10))
-        try { navigator.clipboard.writeText(txt); setMsg('已复制全部链接，可直接粘贴给面试官') } catch (e) { setMsg('复制失败，请手动选择链接') }
+        const one = (links || [])[0]
+        if (!one) return
+        const txt = '候选人评审（' + one.count + ' 人）：' + (one.names || []).join('、') + String.fromCharCode(10) + one.url
+        try { navigator.clipboard.writeText(txt); setMsg('已复制链接，可直接发给面试官') } catch (e) { setMsg('复制失败，请手动选择链接') }
       }
       if (!pool.length) return null
       return h('div', { style: { ...card, marginBottom: 10, padding: '10px 13px' } },
@@ -432,11 +434,12 @@ window.__ModuleLoader__.load({
             h('input', { style: { ...input, flex: 1, minWidth: 200 }, placeholder: 'https://your-tunnel.ngrok.io（内网穿透/公网地址，留空=本机）', value: linkInput, onChange: e => setLinkInput(e.target.value) }),
             h('button', { type: 'button', style: { ...btn, padding: '5px 10px', fontSize: 11 }, onClick: saveLinkCfg }, '保存')) : null,
           h('div', { style: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' } },
-            h('button', { type: 'button', style: primary, disabled: busy, onClick: run }, busy ? '生成中…' : '生成协作链接（' + picked.length + '）'),
-            links && links.length ? h('button', { type: 'button', style: { ...btn }, onClick: copyAll }, '📋 复制全部链接') : null,
+            h('button', { type: 'button', style: primary, disabled: busy, onClick: run }, busy ? '生成中…' : '生成聚合链接（' + picked.length + ' 人）'),
+            links && links.length ? h('button', { type: 'button', style: { ...btn }, onClick: copyAll }, '📋 复制链接') : null,
             msg ? h('span', { style: { fontSize: 10.5, color: /失败/.test(msg) ? C.bad : C.good } }, msg) : null),
-          links && links.length ? h('div', { style: { marginTop: 8, maxHeight: 150, overflowY: 'auto', fontSize: 10, color: C.muted, lineHeight: 1.6 } },
-            ...links.map((x, i) => h('div', { key: i, style: { padding: '2px 0', wordBreak: 'break-all' } }, (i + 1) + '. ' + x.name + ' → ' + x.url))) : null) : null)
+          links && links.length ? h('div', { style: { marginTop: 8, padding: '7px 10px', background: tint(C.good, .07), border: '1px solid ' + tint(C.good, .3), borderRadius: 8 } },
+            h('div', { style: { fontSize: 10.5, color: C.good, marginBottom: 3 } }, '✅ 聚合链接 · 覆盖 ' + links[0].count + ' 人'),
+            h('div', { style: { fontSize: 10, color: C.muted, wordBreak: 'break-all', lineHeight: 1.5 } }, links[0].url + String.fromCharCode(10) + '面试官打开后可逐个评价，无需切换链接')) : null) : null)
     }
 
     function CandidateList({ data, sel, setSel, stage, setStage, onAction }) {
