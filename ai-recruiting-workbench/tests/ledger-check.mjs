@@ -1,9 +1,11 @@
 /* 账本不变量扫描：直接检查真实 events.jsonl 的健康度（只读，不修改）。
    用途：部署后/日常巡检，发现历史遗留的坏数据与逻辑漏洞。
    运行：node tests/ledger-check.mjs [dataDir] */
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { fold, readEvents, STAGES as STAGES_SRC } from '../ledger.js'
 
-const D = process.argv[2] || '/Users/andyzhang/Documents/AI招聘工作她/recruiting'
+const D = process.argv[2] || process.env.RECRUIT_DATA_DIR || join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'recruiting')
 // 阶段清单从 ledger.js 导入（单一来源）；历史遗留阶段名单独列出，避免手写列表漂移
 const STAGES = STAGES_SRC
 const LEGACY_STAGES = ['已接入', '已评估', 'Offer']

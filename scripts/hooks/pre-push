@@ -1,0 +1,9 @@
+#!/bin/sh
+# push 前自动跑安全检查（拦截敏感数据/凭证入库）
+# 与 pre-commit 互补：pre-commit 检查单次提交，pre-push 检查整个待推送范围
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+[ -z "$ROOT" ] && exit 0
+if [ -x "$ROOT/scripts/pre-push-check.sh" ]; then
+  bash "$ROOT/scripts/pre-push-check.sh" || exit 1
+fi
+exit 0

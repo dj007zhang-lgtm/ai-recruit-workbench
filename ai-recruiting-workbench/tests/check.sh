@@ -3,7 +3,24 @@
 # 用法：bash tests/check.sh
 # 任一环节失败 → 非零退出
 set -u
-NODE="/Users/andyzhang/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/node/bin/node"
+# 动态探测 Node / Python（跨机器可移植）
+find_bin() {
+  local name="$1" rel="$2"
+  [ -n "${!3:-}" ] && [ -x "${!3}" ] && { echo "${!3}"; return; }
+  for root in "${DSH_INSTALL_DIR:-}" "$HOME/.dsh"; do
+    [ -z "$root" ] && continue
+    d="$root"
+    for _ in 1 2 3 4 5 6 7 8; do
+      [ -x "$d/$rel" ] && { echo "$d/$rel"; return; }
+      for rt in "$d"/dsh-runtimes/*/; do [ -x "${rt}$rel" ] && { echo "${rt}$rel"; return; }; done
+      nd="$(dirname "$d")"; [ "$nd" = "$d" ] && break; d="$nd"
+    done
+  done
+  command -v "$name" 2>/dev/null
+}
+NODE="$(find_bin node dependencies/node/bin/node DSH_NODE_BIN)"
+PYTHON="$(find_bin python3 dependencies/python/bin/python3 DSH_PYTHON)"
+[ -z "$NODE" ] && { echo "❌ 未找到 Node"; exit 1; }
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 FAIL=0
 
@@ -16,7 +33,7 @@ echo "==================== 1/6 语法检查 ===================="
 for f in "$DIR"/*.js; do
   if ! "$NODE" --check "$f" >/dev/null 2>&1; then echo "❌ 语法错误: $(basename "$f")"; FAIL=1; else echo "✅ $(basename "$f")"; fi
 done
-if ! "/Users/andyzhang/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/python/bin/python3" -c "import ast;ast.parse(open('$DIR/parse_resume.py',encoding='utf-8').read())" 2>/dev/null; then echo "❌ parse_resume.py 语法错误"; FAIL=1; else echo "✅ parse_resume.py"; fi
+if ! "$PYTHON" -c "import ast;ast.parse(open('$DIR/parse_resume.py',encoding='utf-8').read())" 2>/dev/null; then echo "❌ parse_resume.py 语法错误"; FAIL=1; else echo "✅ parse_resume.py"; fi
 
 echo ""
 echo "==================== 2/6 业务规则测试 ===================="

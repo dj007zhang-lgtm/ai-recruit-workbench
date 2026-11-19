@@ -16,7 +16,7 @@ fi
 # 2) 拦截疑似个人信息（逐文件；豁免测试夹具/演示假数据/第三方库/非招聘资料）
 for f in $FILES; do
   case "$f" in
-    */tests/*|*/vendor/*|*/skills/*|skills/*|tests/*|vendor/*|*make_fake_data*|*example*) continue ;;
+    */tests/*|*/vendor/*|*/skills/*|skills/*|tests/*|vendor/*|*make_fake_data*|*example*|*init-project-guard*|*pre-push-check*) continue ;;
   esac
   [ -f "$f" ] || continue
   H=$(git show ":$f" 2>/dev/null | grep -avEi "example\.(com|org)|@demo\.|@test\." | grep -acEi "$PAT" 2>/dev/null)
