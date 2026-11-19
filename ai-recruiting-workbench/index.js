@@ -1449,12 +1449,12 @@ export function apply(ctx, config = {}) {
 
         <div class="fld"><span class="lb">结论</span>
           <div class="seg" id="passSeg">
-            <button type="button" data-v="1" class="on">通过</button>
+            <button type="button" data-v="1">通过</button>
             <button type="button" data-v="0">不通过</button>
           </div>
         </div>
 
-        <div id="availBlock" class="avail">
+        <div id="availBlock" class="avail hidden">
           <div class="availhead">可安排面试的时间区间</div>
           <div class="hint">招聘方会在你给的时间段内安排候选人</div>
           <div id="windows">
@@ -1472,14 +1472,14 @@ export function apply(ctx, config = {}) {
         <div id="msg" class="msg"></div>
       </form>
       <script>
-        var PASS = '1';
+        var PASS = null;
         document.querySelectorAll('#passSeg button').forEach(function (b) {
           b.onclick = function () {
             document.querySelectorAll('#passSeg button').forEach(function (x) { x.classList.remove('on') });
             b.classList.add('on');
             PASS = b.dataset.v;
             document.getElementById('availBlock').classList.toggle('hidden', PASS !== '1');
-            document.getElementById('reasonBlock').classList.toggle('hidden', PASS === '1');
+            document.getElementById('reasonBlock').classList.toggle('hidden', PASS !== '0');
           };
         });
         document.getElementById('addwin').onclick = function () {
@@ -1490,8 +1490,9 @@ export function apply(ctx, config = {}) {
         document.getElementById('ivform').onsubmit = async function (e) {
           e.preventDefault();
           var msg = document.getElementById('msg');
+          if (PASS === null) { msg.className = 'msg bad'; msg.textContent = '请选择通过或不通过'; return; }
           var reason = document.getElementById('reason').value.trim();
-          if (PASS !== '1' && !reason) { msg.className = 'msg bad'; msg.textContent = '请填写不通过的理由'; return; }
+          if (PASS === '0' && !reason) { msg.className = 'msg bad'; msg.textContent = '不通过必须填写理由'; return; }
           var windows = [];
           if (PASS === '1') {
             document.querySelectorAll('#windows .win').forEach(function (row) {
@@ -1517,77 +1518,143 @@ export function apply(ctx, config = {}) {
   // 批量协作页面：一个链接看一批候选人，逐个评价后一次提交。
   // 设计：左侧候选人列表（点击切换）+ 右侧评价表单；已评的标记出来，避免重复劳动。
   function interviewerBatchHtml(token, batch, list, esc) {
-    const lvOpts = ['L0', 'L1', 'L2', 'L3'].map(l => '<option value="' + l + '">' + l + '</option>').join('')
+    // 交互设计（按真实工作流）：
+    //   ① 逐人判断：通过 / 不通过（不通过必须写理由）→ 判断完自动跳下一个人
+    //   ② 全部判断完 → 统一填一次可面试时间区间（面试官日程是自己的，不该为每个人重复填）
+    //   ③ 一次提交，写入全部评价 + 一次时间反馈
     const items = list.map((b, i) => `
       <div class="ivitem" data-i="${i}">
-        <div class="ivl"><span class="ivn">${esc(b.name)}</span><span class="ivg ${b.grade ? 'g' + b.grade : ''}">${b.grade ? esc(b.grade) + ' 级' : '未评'}</span>${b.already ? '<span class="ivdone">已提交</span>' : ''}</div>
+        <div class="ivl">
+          <span class="ivn">${esc(b.name)}</span>
+          <span class="ivg ${b.grade ? 'g' + b.grade : ''}">${b.grade ? esc(b.grade) + ' 级' : '未评'}</span>
+          <span class="ivstate" data-i="${i}"></span>
+        </div>
         <div class="ivs">${esc(b.summary || '').slice(0, 60)}</div>
       </div>`).join('')
+
     const panels = list.map((b, i) => `
       <div class="panel" data-i="${i}" ${i === 0 ? '' : 'style="display:none"'}>
         ${interviewBriefHtml(b, esc)}
-        <form class="card form" data-cid="${esc(b.candidateId)}" data-i="${i}">
-          <h3>面试结论</h3>
-          <div class="fld"><span class="lb">你的姓名</span><input class="ivname" placeholder="面试官姓名" value="${esc(batch.interviewer)}"></div>
-          <div class="fld"><span class="lb">结论</span>
-            <div class="seg"><button type="button" data-v="1" class="on">通过</button><button type="button" data-v="0">不通过</button></div>
-          </div>
-          <div class="avail">
-            <div class="availhead">可安排面试的时间区间</div>
-            <div class="hint">招聘方会在你给的时间段内安排候选人</div>
-            <div class="wins"><div class="win"><input type="datetime-local" class="winFrom"><span class="tilde">至</span><input type="datetime-local" class="winTo"></div></div>
-            <button type="button" class="addwin ghost">+ 再加一个时间区间</button>
+        <div class="card form" data-cid="${esc(b.candidateId)}" data-i="${i}">
+          <h3>第 ${i + 1} / ${list.length} 位 · ${esc(b.name)}</h3>
+          <div class="fld"><span class="lb">你的结论</span>
+            <div class="seg"><button type="button" data-v="1">通过</button><button type="button" data-v="0">不通过</button></div>
           </div>
           <div class="reason hidden">
-            <div class="reasonhead">不通过理由</div>
-            <textarea class="reasonText" rows="3" placeholder="如：技术深度不足 / 项目真实性存疑 / 沟通表达不适合团队"></textarea>
+            <div class="reasonhead">不通过理由（必填）</div>
+            <textarea class="reasonText" rows="2" placeholder="如：技术深度不足 / 项目真实性存疑 / 沟通表达不适合团队"></textarea>
           </div>
-          <button type="submit" class="sub">提交</button>
+          <div class="rowbtns">
+            <button type="button" class="next">确认并看下一位 →</button>
+          </div>
           <div class="msg"></div>
-        </form>
+        </div>
       </div>`).join('')
+
     return '<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>候选人评审 · ' + list.length + ' 人</title><style>' + interviewerPageCss() + `
 .wrap{max-width:1080px}
-.blayout{display:grid;grid-template-columns:264px 1fr;gap:14px;align-items:start}
+.blayout{display:grid;grid-template-columns:250px 1fr;gap:14px;align-items:start}
 @media(max-width:820px){.blayout{grid-template-columns:1fr}}
 .ivlist{position:sticky;top:14px;background:#171d2e;border:1px solid #262e47;border-radius:14px;padding:8px;max-height:88vh;overflow:auto}
-.ivitem{padding:9px 11px;border-radius:9px;cursor:pointer;transition:background .12s;border:1px solid transparent}
+.ivitem{padding:9px 11px;border-radius:9px;cursor:pointer;border:1px solid transparent;transition:background .12s}
 .ivitem:hover{background:#1e2537}
 .ivitem.on{background:rgba(79,132,255,.14);border-color:rgba(79,132,255,.4)}
-.ivl{display:flex;align-items:center;gap:7px;margin-bottom:2px}
+.ivl{display:flex;align-items:center;gap:6px;margin-bottom:2px}
 .ivn{font-size:13px;font-weight:600}
 .ivg{font-size:10px;border-radius:5px;padding:0 6px;background:#222a41;color:#8b97b3}
 .ivg.gS,.ivg.gA{background:rgba(52,199,123,.16);color:#34d399}
 .ivg.gB{background:rgba(240,173,78,.16);color:#f0ad4e}
-.ivg.gC{background:rgba(244,113,113,.16);color:#f47171}
-.ivdone{font-size:9.5px;color:#34d399;margin-left:auto}
+.ivg.gC{background:rgba(240,173,78,.16);color:#f0ad4e}
+.ivstate{font-size:10px;margin-left:auto;font-weight:600}
+.ivstate.pass{color:#34d399}.ivstate.fail{color:#f47171}
 .ivs{font-size:10.5px;color:#8b97b3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bhead{margin-bottom:12px}
-.bhead h1{margin:0 0 3px;font-size:19px}
-.bhead .m{color:#8b97b3;font-size:12px}` + '</style></head><body><div class="wrap">' +
+.bhead{margin-bottom:12px}.bhead h1{margin:0 0 3px;font-size:19px}.bhead .m{color:#8b97b3;font-size:12px}
+.rowbtns{display:flex;gap:8px;margin-top:12px}
+.next{flex:1;background:#4f84ff;color:#fff;border:0;border-radius:10px;padding:12px;font:14px inherit;font-weight:700;cursor:pointer}
+.next:hover{filter:brightness(1.08)}
+.next:disabled{opacity:.45;cursor:not-allowed}
+.reason{margin:10px 0 0;padding:12px;background:rgba(244,113,113,.06);border:1px solid rgba(244,113,113,.28);border-radius:11px}
+.reason.hidden{display:none}
+.reasonhead{font-size:12px;font-weight:700;color:#f47171;margin-bottom:7px}
+.reason textarea{width:100%;background:#0e1320;border:1px solid #2b3350;color:#e8eef8;border-radius:9px;padding:10px 12px;font:13.5px/1.5 inherit;resize:vertical}
+.final{background:#171d2e;border:1px solid #262e47;border-radius:14px;padding:18px}
+.final h2{margin:0 0 6px;font-size:17px}
+.sumrow{font-size:12.5px;color:#a7b1c7;margin:4px 0}
+.sumrow b{color:#e8eef8}
+` + '</style></head><body><div class="wrap">' +
       '<div class="bhead"><h1>候选人评审</h1><div class="m">' + esc(batch.round) + ' · 共 ' + list.length + ' 人' + (batch.interviewer ? ' · 面试官 ' + esc(batch.interviewer) : '') + (batch.place ? ' · ' + esc(batch.place) : '') + '</div></div>' +
-      '<div class="blayout"><div class="ivlist">' + items + '</div><div>' + panels + '</div></div></div>' +
+      '<div class="blayout"><div class="ivlist">' + items + '</div><div>' + panels +
+      // 最终步骤：统一填时间 + 一次提交
+      `<div class="final hidden" id="finalStep">
+        <h2>全部判断完成</h2>
+        <div id="summary"></div>
+        <div class="avail" style="margin-top:14px">
+          <div class="availhead">可安排面试的时间区间</div>
+          <div class="hint">只给通过的人安排面试；招聘方会在此区间内排具体候选人</div>
+          <div id="windows">
+            <div class="win"><input type="datetime-local" class="winFrom"><span class="tilde">至</span><input type="datetime-local" class="winTo"></div>
+          </div>
+          <button type="button" id="addwin" class="ghost">+ 再加一个时间区间</button>
+        </div>
+        <label class="fld">你的姓名<input id="finalName" placeholder="面试官姓名" value="${esc(batch.interviewer)}"></label>
+        <button type="button" id="submitAll" style="width:100%;background:#34d399;color:#062;border:0;border-radius:10px;padding:13px;font:14.5px inherit;font-weight:700;cursor:pointer;margin-top:6px">提交全部结果</button>
+        <div id="finalMsg" class="msg"></div>
+      </div>` +
+      '</div></div>' +
       '<script>' +
-      'var WIN_HTML="<input type=datetime-local class=winFrom><span class=tilde>至</span><input type=datetime-local class=winTo>";' +
-      'var items=document.querySelectorAll(".ivitem"),panels=document.querySelectorAll(".panel");' +
-      'items.forEach(function(it){it.onclick=function(){items.forEach(function(x){x.classList.remove("on")});panels.forEach(function(x){x.style.display="none"});it.classList.add("on");var pnl=panels[parseInt(it.dataset.i,10)];if(pnl)pnl.style.display=""}})};' +
+      'var DEC={};var items=document.querySelectorAll(".ivitem"),panels=document.querySelectorAll(".panel");' +
+      'var N=' + list.length + ';' +
+      // 切换面板
+      'function show(i){items.forEach(function(x){x.classList.remove("on")});panels.forEach(function(x){x.style.display="none"});if(items[i])items[i].classList.add("on");var p=panels[i];if(p)p.style.display=""}' +
+      'items.forEach(function(it){it.onclick=function(){show(parseInt(it.dataset.i,10))}});' +
       'if(items[0])items[0].classList.add("on");' +
+      // 每个面板：结论按钮 + 确认下一位
       'document.querySelectorAll(".form").forEach(function(form){' +
-      '  var pass="1";var segBtns=form.querySelectorAll(".seg button");' +
-      '  segBtns.forEach(function(b){b.onclick=function(){segBtns.forEach(function(x){x.classList.remove("on")});b.classList.add("on");pass=b.dataset.v;form.querySelector(".avail").classList.toggle("hidden",pass!=="1");form.querySelector(".reason").classList.toggle("hidden",pass==="1")}})};' +
-      '  form.querySelector(".addwin").onclick=function(){var sl=form.querySelector(".wins");var dv=document.createElement("div");dv.className="win";dv.innerHTML=WIN_HTML;sl.appendChild(dv)};' +
-      '  form.onsubmit=async function(e){e.preventDefault();var msg=form.querySelector(".msg");' +
+      '  var i=parseInt(form.dataset.i,10);var v=null;' +
+      '  var seg=form.querySelectorAll(".seg button");' +
+      '  seg.forEach(function(b){b.onclick=function(){seg.forEach(function(x){x.classList.remove("on")});b.classList.add("on");v=b.dataset.v;form.querySelector(".reason").classList.toggle("hidden",v!=="0")}})};' +
+      '  form.querySelector(".next").onclick=function(){' +
+      '    var msg=form.querySelector(".msg");' +
+      '    if(v===null){msg.className="msg bad";msg.textContent="请选择通过或不通过";return}' +
       '    var reason=form.querySelector(".reasonText").value.trim();' +
-      '    if(pass!=="1"&&!reason){msg.className="msg bad";msg.textContent="请填写不通过的理由";return}' +
-      '    var windows=[];if(pass==="1"){form.querySelectorAll(".win").forEach(function(r){var f0=r.querySelector(".winFrom").value;var t0=r.querySelector(".winTo").value;if(f0)windows.push({from:f0,to:t0||"",note:""})});if(!windows.length){msg.className="msg bad";msg.textContent="请至少给一个时间区间";return}}' +
-      '    var body={token:' + JSON.stringify(token) + ',candidateId:form.dataset.cid,interviewer:form.querySelector(".ivname").value,pass:pass==="1",note:reason,windows:windows};' +
-      '    msg.className="msg";msg.textContent="提交中…";' +
-      '    try{var r=await fetch("/api/ai-recruiting/interviewer-submit-candidate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});var j=await r.json();' +
-      '      if(j.ok){msg.className="msg ok";msg.textContent="✅ 已提交";form.style.display="none";var it=items[form.dataset.i];if(it&&!it.querySelector(".ivdone")){var d=document.createElement("span");d.className="ivdone";d.textContent="已提交";it.querySelector(".ivl").appendChild(d)}}' +
-      '      else{msg.className="msg bad";msg.textContent=j.error||"提交失败"}}catch(err){msg.className="msg bad";msg.textContent="提交失败："+err.message}}' +
+      '    if(v==="0"&&!reason){msg.className="msg bad";msg.textContent="不通过必须填写理由";return}' +
+      '    DEC[i]={pass:v==="1",note:reason};' +
+      '    var st=items[i].querySelector(".ivstate");st.className="ivstate "+(v==="1"?"pass":"fail");st.textContent=v==="1"?"通过":"不通过";' +
+      '    form.style.display="none";' +
+      '    var nx=i+1;while(nx<N&&DEC[nx]!==undefined)nx++;' +
+      '    if(nx<N){show(nx)}else{finish()}' +
+      '  };' +
       '});' +
+      // 完成：显示汇总 + 时间填写
+      'function finish(){' +
+      '  var passN=0,failN=0;for(var k in DEC){if(DEC[k].pass)passN++;else failN++}' +
+      '  document.querySelectorAll(".panel").forEach(function(p){p.style.display="none"});' +
+      '  document.getElementById("finalStep").classList.remove("hidden");' +
+      '  document.getElementById("summary").innerHTML="<div class=sumrow>共 <b>"+N+"</b> 人：<b style=color:#34d399>通过 "+passN+"</b> · <b style=color:#f47171>不通过 "+failN+"</b></div>";' +
+      '}' +
+      // 增删时间区间
+      'document.getElementById("addwin").onclick=function(){var d=document.createElement("div");d.className="win";d.innerHTML="<input type=datetime-local class=winFrom><span class=tilde>至</span><input type=datetime-local class=winTo>";document.getElementById("windows").appendChild(d)};' +
+      // 一次提交全部
+      'document.getElementById("submitAll").onclick=async function(){' +
+      '  var msg=document.getElementById("finalMsg");var passN=0;for(var k in DEC){if(DEC[k].pass)passN++}' +
+      '  var wins=[];document.querySelectorAll("#windows .win").forEach(function(r){var f0=r.querySelector(".winFrom").value;var t0=r.querySelector(".winTo").value;if(f0)wins.push({from:f0,to:t0||"",note:""})});' +
+      '  if(passN>0&&!wins.length){msg.className="msg bad";msg.textContent="有通过的人，请至少给一个可安排面试的时间区间";return}' +
+      '  var name=document.getElementById("finalName").value;' +
+      '  msg.className="msg";msg.textContent="提交中…";' +
+      '  var okN=0,errMsg="";' +
+      '  for(var i=0;i<N;i++){' +
+      '    if(!DEC[i])continue;' +
+      '    var cid=panels[i].querySelector(".form").dataset.cid;' +
+      '    try{var r=await fetch("/api/ai-recruiting/interviewer-submit-candidate",{method:"POST",headers:{"Content-Type":"application/json"},' +
+      '      body:JSON.stringify({token:' + JSON.stringify(token) + ',candidateId:cid,interviewer:name,pass:DEC[i].pass,note:DEC[i].note,windows:DEC[i].pass?wins:[]})});' +
+      '      var j=await r.json();if(j.ok)okN++;else errMsg=j.error||"提交失败"}catch(e){errMsg=e.message}' +
+      '  }' +
+      '  if(okN===N){msg.className="msg ok";msg.textContent="✅ 已提交 "+okN+" 人的评审结果";document.getElementById("submitAll").disabled=true}' +
+      '  else{msg.className="msg bad";msg.textContent="成功 "+okN+"/"+N+"，错误："+errMsg}' +
+      '};' +
       '</script></body></html>'
   }
+
 
   function interviewBriefHtml(b, esc) {
     const ai = '<div class="card ai"><div class="aihead"><span class="badge">AI 初筛</span>' + (b.grade ? '<b class="g">' + esc(b.grade) + ' 级</b>' : '') + (b.score != null ? '<span class="sc">' + esc(b.score) + ' 分</span>' : '') + '</div>' + (b.summary ? '<div class="sum">' + esc(b.summary).slice(0, 200) + '</div>' : '') + ((b.doubts && b.doubts.length) ? '<div class="db">⚠ 疑点：' + esc(b.doubts.join(' / ')) + '</div>' : '') + ((b.alignment && b.alignment.length) ? '<div class="dims">' + b.alignment.map(a => '<div class="dim"><span class="dn">' + esc(a.dim) + '</span><span class="lv">' + esc(a.level || '—') + '</span></div>').join('') + '</div>' : '') + '</div>'
