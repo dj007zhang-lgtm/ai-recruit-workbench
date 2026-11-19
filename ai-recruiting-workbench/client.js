@@ -387,8 +387,8 @@ window.__ModuleLoader__.load({
         try {
           const j = await api('/api/ai-recruiting/batch-invite-interviewer', { method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ candidateIds: picked, interviewer, round, place }) })
-          if (j && j.ok) { setLinks(j.items || []); setMsg('已生成 ' + j.count + ' 个面试官协作链接，可一次性复制转发') }
-          else setMsg('生成失败：' + ((j && j.error) || '未知'))
+          if (j && j.ok && j.url) { setLinks([{ url: j.url, count: j.count, names: j.names || [] }]); setMsg('已生成聚合链接，覆盖 ' + j.count + ' 人，面试官一次看完') }
+          else setMsg('生成失败：' + ((j && j.error) || '后端未返回链接'))
         } catch (e) { setMsg('生成失败：' + String(e.message || e)) }
         finally { setBusy(false) }
       }
@@ -1011,6 +1011,20 @@ window.__ModuleLoader__.load({
           h('label', { style: { fontSize: 11.5, color: C.muted } }, '渠道',
             h('select', { style: input2, value: f.channel, onChange: e => set('channel', e.target.value) }, ...['微信', '邮件', '短信', '电话'].map(x => h('option', { key: x, value: x }, x)))),
           h('div', null, h('div', { style: { fontSize: 11.5, color: C.muted, marginBottom: 6 } }, '时间'), h(DateTimeField, null))))
+        // 面试官反馈的可面试时段：点一下直接填入（避免手动敲时间出错，也让面试官的时间真正被用上）
+        if (candidate.availability && candidate.availability.length) {
+          const allSlots = []
+          for (const av of candidate.availability) for (const sl of (av.slots || [])) allSlots.push({ at: sl.at, note: sl.note, by: av.interviewer })
+          if (allSlots.length) {
+            body.push(h('div', { style: { marginBottom: 8, padding: '7px 10px', background: tint(C.good, .06), border: '1px solid ' + tint(C.good, .28), borderRadius: 8 } },
+              h('div', { style: { fontSize: 10.5, color: C.good, marginBottom: 5 } }, '📅 面试官反馈的可面试时段 · 点选填入'),
+              h('div', { style: { display: 'flex', gap: 5, flexWrap: 'wrap' } },
+                ...allSlots.slice(0, 8).map((sl, i) => h('button', { key: i, type: 'button',
+                  style: { fontSize: 10.5, padding: '3px 8px', borderRadius: 6, cursor: 'pointer', border: '1px solid ' + tint(C.accent, .4), background: tint(C.accent, .08), color: C.accent },
+                  onClick: () => set('at', sl.at) },
+                  sl.at.replace('T', ' ') + (sl.note ? ' · ' + sl.note : '') + (sl.by ? '（' + sl.by + '）' : ''))))))
+          }
+        }
         body.push(h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 } },
           h('label', { style: { fontSize: 11.5, color: C.muted } }, '面试形式',
             h('select', { style: input2, value: f.placeType, onChange: e => set('placeType', e.target.value) }, ...['现场面试', '在线面试'].map(x => h('option', { key: x, value: x }, x)))),
