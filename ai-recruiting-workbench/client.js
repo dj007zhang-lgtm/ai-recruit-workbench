@@ -65,7 +65,28 @@ window.__ModuleLoader__.load({
       good: '#12a06a', warn: '#d98a0b', bad: '#d64545', flat: '#8894aa',
       text: 'var(--dsh-text-primary, inherit)', info: '#3b82f6', purple: '#7c3aed', onAccent: 'var(--dsh-text-on-accent, #fff)',
     }
-    const tint = (hex, a) => { const m = String(hex).match(/^#([0-9a-fA-F]{6})$/); if (!m) return hex; const n = parseInt(m[1], 16); return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')' }
+    // 半透明着色：支持 #RRGGBB 与 var(--x, #fallback) 两种形式
+    // 历史 bug：只认 #RRGGBB，遇到 var(--dsh-accent, #2f6bff) 直接返回原值，
+    // 结果 background 变成实心蓝、文字也是蓝色 → 徽章文字看不见（只剩一个蓝方块）
+    const tint = (hex, a) => {
+      let raw = String(hex == null ? '' : hex).trim()
+      // var(--x, #fallback) → 取 fallback；var(--x) 无 fallback 时用 color-mix 保底
+      const vm = raw.match(/^var\(\s*--[\w-]+\s*,\s*([^)]+)\)$/)
+      if (vm) raw = vm[1].trim()
+      const m = raw.match(/^#([0-9a-fA-F]{6})$/)
+      if (m) {
+        const n = parseInt(m[1], 16)
+        return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'
+      }
+      const m3 = raw.match(/^#([0-9a-fA-F]{3})$/)
+      if (m3) {
+        const h = m3[1].split('').map(x => x + x).join('')
+        const n = parseInt(h, 16)
+        return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'
+      }
+      // 其他（纯 var 无 fallback / 颜色名）：用 color-mix 生成半透明，浏览器不支持则回退 transparent
+      return 'color-mix(in srgb, ' + raw + ' ' + Math.round(a * 100) + '%, transparent)'
+    }
     const card = { background: C.card, border: '1px solid ' + C.border, borderRadius: 12, padding: '11px 13px', minWidth: 0, boxShadow: '0 1px 3px rgba(0,0,0,.14)' }
     const clk = (fn) => ({ onClick: fn, role: 'button', tabIndex: 0, onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(e) } }, className: 'rec-row' })
     // ===== AI 数据分析 Bot（悬浮、点击才分析、带缓存、可对话追问）=====
@@ -2744,7 +2765,7 @@ window.__ModuleLoader__.load({
           const detailPart = d
             ? h('div', { style: { marginTop: 12 } }, h(Detail, { detail: data.detail, onAction, lastSeq, onOpenLog: () => setNav('log'), positions: data.positions, panelHint: hint }))
             : h('div', { style: { ...card, marginTop: 12, fontSize: 11.5, color: C.muted, textAlign: 'center' } }, '点击上方任一候选人卡片查看详情与操作')
-          flowBody = h('div', null, h(Funnel, { counts, stage, setStage: flowSetStage }), h(BatchInviteCard, { data, onDone: reload }), h(Kanban, { data, sel, setSel, onOpen: openWith, onMore: (st) => { setView('list'); flowSetStage(st) }, onAdopt: (id) => { act({ action: 'adopt', candidateId: id }) } }), detailPart)
+          flowBody = h('div', null, h(Kanban, { data, sel, setSel, onOpen: openWith, onMore: (st) => { setView('list'); flowSetStage(st) }, onAdopt: (id) => { act({ action: 'adopt', candidateId: id }) } }), detailPart)
         } else {
           const visible = stage ? (data.candidates || []).filter(x => x.stage === stage) : (data.candidates || [])
           const detailOk = data.detail && data.detail.candidate && (!sel || visible.some(x => x.id === sel))
@@ -2756,7 +2777,13 @@ window.__ModuleLoader__.load({
             h(CandidateList, { data, sel, setSel, stage, setStage: flowSetStage, onAction: () => reload() }), right)
         }
         // 流程页全宽（接入简历是独立模块，不在这里）
-        body = h('div', null, viewToggle, flowBody)
+        // 操作区（视图切换 + 阶段筛选 + 批量转发）固定在顶部：筛完往下翻人时不用滚回去
+        body = h('div', null,
+          h('div', { style: { position: 'sticky', top: -14, zIndex: 20, background: 'var(--dsw-alias-surface-1, #161c2a)', paddingTop: 14, paddingBottom: 4, marginTop: -14, boxShadow: '0 6px 12px -8px rgba(0,0,0,.45)' } },
+            viewToggle,
+            h(Funnel, { counts, stage, setStage: flowSetStage }),
+            h(BatchInviteCard, { data, onDone: reload })),
+          flowBody)
       }
 
 
