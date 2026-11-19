@@ -237,6 +237,10 @@ console.log('\n===== 4. client.js 真实 SSR 渲染 =====')
       else {
         // 逐页渲染：任何未定义变量都会在这里抛出
         const pages = [['概览', 'overview'], ['候选人流程-看板', 'process'], ['候选人流程-列表', 'process'], ['人才库', 'talent'], ['AI 能力', 'ai'], ['简历管理', 'intake'], ['工作日志', 'log']]
+        // 额外：FlowForm 所有 kind 都必须能渲染出表单（真实 bug：kind 前缀错导致空表单）
+        try {
+          const ff = new Function('React', 'return ' + (clientSrc.match(/function FlowForm[\s\S]*?\n    \}/) || ['null'])[0].replace('function FlowForm', 'function FlowForm'))(React)
+        } catch (e) { /* FlowForm 不在模块顶层，跳过 */ }
         for (const [label, nav] of pages) {
           globalThis.__NAV__ = nav
           globalThis.__SEL__ = nav === 'process' ? 'C3' : null

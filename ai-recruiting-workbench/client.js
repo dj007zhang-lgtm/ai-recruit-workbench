@@ -473,7 +473,7 @@ window.__ModuleLoader__.load({
             h('div', { style: { fontSize: 10, color: C.muted, wordBreak: 'break-all', lineHeight: 1.5 } }, links[0].url + String.fromCharCode(10) + '面试官打开后可逐个评价，无需切换链接')) : null) : null)
     }
 
-    function CandidateList({ data, sel, setSel, stage, setStage, onAction }) {
+    function CandidateList({ data, sel, setSel, stage, setStage, onAction, onOpenForm }) {
       const all = data.candidates || []
       const [q, setQ] = React.useState('')
       const [sortKey, setSortKey] = React.useState('score')
@@ -558,7 +558,9 @@ window.__ModuleLoader__.load({
                     return
                   }
                   if (k === 'activate') { try { await api('/api/ai-recruiting/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'activate', candidateId: c.id, reason: '列表激活' }) }); onAction && onAction() } catch (err) { setMsg('失败：' + String(err.message || err)) } return }
+                  // flow:xxx → 选中该候选人并打开对应表单（此前只 setSel，点了没反应）
                   setSel(c.id)
+                  if (k && k.indexOf('flow:') === 0 && typeof onOpenForm === 'function') onOpenForm(c.id, k.slice(5))
                 },
                 style: { fontSize: 10.5, padding: '1px 7px', borderRadius: 6, border: '1px solid ' + (k === 'elim' ? C.bad : C.accent), color: k === 'elim' ? C.bad : C.accent, background: 'transparent', cursor: 'pointer' } }, label)))))))),
         !rows.length ? h('div', { style: { padding: 24, textAlign: 'center', fontSize: 11.5, color: C.muted } }, all.length ? '该筛选下暂无候选人' : '还没有候选人，去「简历管理」批量上传解析') : null)
@@ -1480,10 +1482,10 @@ window.__ModuleLoader__.load({
         '初试中': [['copilot', '🎯 面试准备'], ['feedback', '录初试面评'], ELIM],
         '待复试': [['interview', '安排复试'], ELIM],
         '复试中': [['copilot', '🎯 面试准备'], ['feedback', '录复试面评'], ELIM],
-        '待背调': [['flow:backcheck', '录入背调结论'], ELIM],
-        'Offer已发': [['flow:accept', '候选人已接受'], ['flow:decline', '被拒 / 放弃'], ELIM],
-        'Offer已接受': [['flow:onboard', '安排入职'], ELIM],
-        '待入职': [['flow:hire', '确认入职'], ELIM],
+        '待背调': [['backcheck', '录入背调结论'], ELIM],
+        'Offer已发': [['accept', '候选人已接受'], ['decline', '被拒 / 放弃'], ELIM],
+        'Offer已接受': [['onboard', '安排入职'], ELIM],
+        '待入职': [['hire', '确认入职'], ELIM],
         '人才库': [['activate', '重新激活']], '已淘汰': [['activate', '重新激活']],
       }[c.stage] || []
       if (flow.length) seg('流程动作', () => out.push(h(Block, { title: '流程动作' },
@@ -1493,7 +1495,9 @@ window.__ModuleLoader__.load({
             if (k === 'adopt') { run({ action: 'adopt', candidateId: c.id }); return }
             if (k === 'activate') { run({ action: 'activate', candidateId: c.id, reason: '重新激活' }); return }
             if (k === 'elim') { setPanel('elim'); return }
-            setPanel('flow:' + k)
+            // k 可能已带 flow: 前缀（quick 数组）也可能不带（详情页 flow 数组）→ 统一剥离后只加一次
+            const bare = String(k).indexOf('flow:') === 0 ? String(k).slice(5) : String(k)
+            setPanel('flow:' + bare)
           } }, label))))))
       if (panel && panel.indexOf('flow:') === 0) {
         const k = panel.slice(5)
@@ -2803,7 +2807,7 @@ window.__ModuleLoader__.load({
           else if (visible.length) right = h('div', { style: card }, h('div', { style: { fontSize: 11.5, color: C.muted } }, '当前筛选「' + stage + '」共 ' + visible.length + ' 人，点击左侧查看'))
           else right = h('div', { style: card }, '该筛选下暂无候选人')
           flowBody = h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(250px,320px) 1fr', gap: 12, alignItems: 'start' } },
-            h(CandidateList, { data, sel, setSel, stage, setStage: flowSetStage, onAction: () => reload() }), right)
+            h(CandidateList, { data, sel, setSel, stage, setStage: flowSetStage, onAction: () => reload(), onOpenForm: (cid, kind) => { setSel(cid); setModal({ kind, cid }) } }), right)
         }
         // 流程页全宽（接入简历是独立模块，不在这里）
         // 操作区（视图切换 + 阶段筛选 + 批量转发）固定在顶部：筛完往下翻人时不用滚回去
