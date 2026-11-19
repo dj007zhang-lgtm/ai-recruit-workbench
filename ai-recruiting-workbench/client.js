@@ -1780,7 +1780,7 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = React.useState(false)
       const go = async (files) => {
         const list = Array.from(files || []); if (!list.length) return
-        setBusy(true); let ok = 0, ocr = 0, fail = 0
+        setBusy(true); let ok = 0, ocr = 0, fail = 0, pendingLLM = 0
         const auto = []
         for (const file of list) {
           try {
@@ -1789,11 +1789,16 @@ window.__ModuleLoader__.load({
             if (j.needsOcr) ocr++
             else {
               ok++
-              if (j.autoScreen && j.autoScreen.to) auto.push((j.name || '') + '→' + j.autoScreen.to)
+              if (j.autoScreen && j.autoScreen.pending) pendingLLM++
+              else if (j.autoScreen && j.autoScreen.to) auto.push((j.name || '') + '→' + j.autoScreen.to)
             }
           } catch (e) { fail++ }
         }
-        setBusy(false); setMsg(ok + ' 份已接入并自动初筛' + (auto.length ? '（' + auto.slice(0, 4).join('，') + (auto.length > 4 ? ' 等' : '') + '）' : '') + (ocr ? '，' + ocr + ' 待补录' : '') + (fail ? '，' + fail + ' 失败' : '')); onDone()
+        setBusy(false)
+        setMsg(ok + ' 份已接入' + (auto.length ? '，自动初筛：' + auto.slice(0, 4).join('，') + (auto.length > 4 ? ' 等' : '') : '')
+          + (pendingLLM ? '；⚠ ' + pendingLLM + ' 份等待 AI（网关不可用，未使用规则替代，AI 恢复后重新初筛）' : '')
+          + (ocr ? '；' + ocr + ' 份待补录' : '') + (fail ? '；' + fail + ' 份失败' : ''))
+        onDone()
       }
       return h(Block, { title: '批量上传解析' },
         h('input', { type: 'file', ref, multiple: true, style: { display: 'none' }, accept: '.pdf,.docx,.doc,.rtf,.txt,.html,.htm,.md,.csv,.png,.jpg,.jpeg,.webp,.tiff,.bmp', onChange: e => { go(e.target.files); e.target.value = '' } }),

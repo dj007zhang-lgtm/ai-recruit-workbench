@@ -374,7 +374,7 @@ export function apply(ctx, config = {}) {
           const r = await assessCandidate(d, a.candidateId)
           result = r.ok
             ? { ok: true, candidateId: a.candidateId, action: a.action, route: r.route, to: r.to, diag: r.diag, engine: r.engine, seq: r.seq }
-            : r
+            : { ok: false, pending: true, engine: r.engine || 'pending-llm', reason: r.reason, message: r.message, needsRetry: true, candidateId: a.candidateId }
         } else {
           result = performAction(d, a)
         }
@@ -437,8 +437,8 @@ export function apply(ctx, config = {}) {
             cand0 = fold(d).byId[cid0]
             if (cand0 && cand0.pid) {
               const ra = await assessCandidate(d, cid0)
-              out.autoScreen = { route: ra.route, to: ra.to || null, engine: ra.engine }
-              if (ra.engine === 'rule') { try { await enhanceGatesWithAI(d, cid0) } catch (e) {} }
+              if (ra.ok) out.autoScreen = { route: ra.route, to: ra.to || null, engine: ra.engine }
+              else out.autoScreen = { pending: true, engine: ra.engine || 'pending-llm', message: ra.message || ra.reason, needsRetry: true }
             }
           } catch (e) { out.autoScreen = { error: String(e && e.message || e) } }
         }
@@ -457,6 +457,38 @@ export function apply(ctx, config = {}) {
     },
   }))
   // 关岗前影响面：列出该职位在途候选人
+  dispose.push(ctx.webServer.register({
+    kind: 'exact', path: '/api/ai-recruiting/llm-probe',
+    resource: async () => {
+      const out = { hasCtx: !!ctx, providers: [], chunks: [], text: '', errors: [] }
+      try {
+        const llm = (typeof ctx.get === 'function' && ctx.get('llm')) || ctx.llm
+        out.hasLlm = !!llm
+        out.hasStream = !!(llm && typeof llm.stream === 'function')
+        try { out.providers = (llm && typeof llm.listProviders === 'function') ? await llm.listProviders() : 'no-listProviders' } catch (e) { out.errors.push('providers:' + e.message) }
+        if (out.hasStream) {
+          const prov = (config && config.jdProvider) || 'magpie'
+          const model = (config && config.jdModel) || 'workbuddy/deepseek-v4.1-flash'
+          out.used = { prov, model }
+          let n = 0
+          for await (const chunk of llm.stream({ provider: prov, model, temperature: 0, messages: [{ role: 'user', content: [{ type: 'text', text: '只回复两个字：你好' }] }] })) {
+            if (n < 6) out.chunks.push({ type: chunk && chunk.type, keys: chunk ? Object.keys(chunk) : null, text: chunk && typeof chunk.text === 'string' ? chunk.text.slice(0, 40) : null })
+            n++
+            if (chunk && typeof chunk.text === 'string') out.text += chunk.text
+            if (n > 200) break
+          }
+          out.chunkCount = n
+          out.usable = !!(out.text && out.text.trim())
+          if (!out.usable) out.hint = 'LLM 无有效返回：检查网关额度/账号。AI 初筛将保持等待，不使用规则替代。'
+        }
+      } catch (e) {
+        out.errors.push('stream:' + String(e && e.message || e))
+        out.usable = false
+        out.hint = 'LLM 调用异常：' + String(e && e.message || e)
+      }
+      return new Response(JSON.stringify(out), { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8' } })
+    },
+  }))
   dispose.push(ctx.webServer.register({
     kind: 'exact', path: '/api/ai-recruiting/insights',
     handler: async (req, res) => {
@@ -821,20 +853,25 @@ export function apply(ctx, config = {}) {
   // 决策：有评分卡 → BARS 深评（内含技术栈闸门+规则硬门槛预检，不合格直接淘汰不进LLM）；
   //       无评分卡 → 规则 autoAssess 兜底。
   // 返回统一结构 { ok, engine, diag, route, to/advanced, seq }。
+  // 评估主入口（唯一决策点）。原则：AI 筛选必须由 AI 完成 —— 不做静默降级。
+  //   ① 硬门槛（规则可判的明确项）不符 → 直接淘汰（不烧 LLM）
+  //   ② 其余一律走 BARS（LLM 逐维判档）
+  //   ③ LLM 不可用 → 明确返回等待（pending-llm），绝不偷偷用规则冒充 AI 结论
   async function assessCandidate(d, candidateId) {
     const c0 = fold(d).byId[candidateId]
     if (!c0) return { ok: false, reason: 'candidate-not-found' }
     if (!c0.pid) return { ok: false, reason: '未关联岗位，无法评估。请先绑定岗位。' }
     const p0 = fold(d).positions.find(x => x.id === c0.pid)
     const hasSc = p0 && p0.scorecard && Array.isArray(p0.scorecard.softDims) && p0.scorecard.softDims.length
-    if (hasSc) {
-      const r = await runBarsAssess(d, candidateId)
-      if (r && r.ok) return { ok: true, engine: r.stackGate || r.preGate ? 'rule-gate' : 'bars', diag: r.diag, route: r.diag && r.diag.route, to: r.advanced, seq: r.seq }
-      // BARS 失败（无样本/无评分卡）→ 回退规则
-    }
-    // 规则兜底（无评分卡 或 BARS 失败）
-    const rr = performAction(d, { action: 'auto_assess', candidateId })
-    return { ok: true, engine: 'rule', route: rr.route, to: rr.to, seq: rr.seq, scores: rr.scores, undetermined: rr.undetermined, doubts: rr.doubts }
+    if (!hasSc) return { ok: false, reason: 'no-scorecard', message: '该岗位无评分卡，无法 BARS 评估。请先在职位管理生成评分卡。' }
+    const r = await runBarsAssess(d, candidateId)
+    if (r && r.ok) return { ok: true, engine: r.stackGate || r.preGate ? 'rule-gate' : 'bars', diag: r.diag, route: r.diag && r.diag.route, to: r.advanced, seq: r.seq }
+    // BARS 未产出：不降级、不落评估结论，明确告知等待 LLM
+    const why = (r && r.reason) || 'unknown'
+    const msg = why === 'no-valid-sample'
+      ? 'AI 网关暂时不可用（BARS 判档无有效返回）。候选人保持待评估，AI 恢复后重新初筛即可 —— 不使用规则结论替代 AI 判断。'
+      : ('BARS 评估未完成（' + why + '）。候选人保持待评估，请稍后重试。')
+    return { ok: false, engine: 'pending-llm', reason: why, message: msg, needsRetry: true }
   }
 
   async function runBarsAssess(d, candidateId) {
