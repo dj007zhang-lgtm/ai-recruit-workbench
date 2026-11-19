@@ -26,6 +26,7 @@ const DEFAULT_BASED_ON = { l0: 'v1.2', l1: 'v1', rule: 'v1', model: 'local-rules
 function dirOf(ctx, exec, config) {
   // 账本只有一个位置：显式数据目录优先。工具与 HTTP 路由必须读同一份事实，
   // 否则「沉淀」会分裂成两本账。会话 cwd 仅作未配置时的回退。
+  if (process.env.RECRUIT_DATA_DIR) return process.env.RECRUIT_DATA_DIR
   if (config && config.dataDir) return config.dataDir
   try {
     if (exec && exec.agent && ctx.workingDirectory) {
@@ -54,9 +55,9 @@ const SCRIPT_DIR = fileURLToPath(new URL('.', import.meta.url))
 
 export function apply(ctx, config = {}) {
   const dispose = []
-  const dataDir = () => config && config.dataDir
-    ? config.dataDir
-    : join((ctx.workingDirectory && ctx.workingDirectory.defaultDirectory) || process.cwd(), 'recruiting')
+  const dataDir = () => process.env.RECRUIT_DATA_DIR
+    || (config && config.dataDir)
+    || join((ctx.workingDirectory && ctx.workingDirectory.defaultDirectory) || process.cwd(), 'recruiting')
   const tool = (name, description, parameters, run, format) => {
     dispose.push(ctx.tools.register({
       name, description, parameters, output: jsonOut(format),
@@ -474,8 +475,9 @@ export function apply(ctx, config = {}) {
         out.hasStream = !!(llm && typeof llm.stream === 'function')
         try { out.providers = (llm && typeof llm.listProviders === 'function') ? await llm.listProviders() : 'no-listProviders' } catch (e) { out.errors.push('providers:' + e.message) }
         if (out.hasStream) {
-          const prov = (config && config.jdProvider) || 'magpie'
-          const model = (config && config.jdModel) || 'workbuddy/deepseek-v4.1-flash'
+          const _rt = await resolveLlmRoute(true)
+          const prov = _rt ? _rt.provider : ((config && config.jdProvider) || '?')
+          const model = _rt ? _rt.model : ((config && config.jdModel) || '?')
           out.used = { prov, model }
           let n = 0
           for await (const chunk of llm.stream({ provider: prov, model, temperature: 0, messages: [{ role: 'user', content: [{ type: 'text', text: '只回复两个字：你好' }] }] })) {
@@ -666,10 +668,9 @@ export function apply(ctx, config = {}) {
   ].join('\n')
 
   async function llmGenerateScorecard(p, jd) {
-    const llm = (typeof ctx.get === 'function' && ctx.get('llm')) || ctx.llm
-    if (!llm || typeof llm.stream !== 'function') return { ok: false, reason: 'no-llm' }
-    const provider = (config && config.jdProvider) || 'magpie'
-    const model = (config && config.jdModel) || 'workbuddy/deepseek-v4.1-flash'
+    const route = await resolveLlmRoute()
+    if (!route) return { ok: false, reason: 'no-llm-route', message: '未发现可用的 LLM 通道' }
+    const llm = route.llm, provider = route.provider, model = route.model
     let text = ''
     try {
       for await (const chunk of llm.stream({ provider, model, messages: [{ role: 'user', content: [{ type: 'text', text: SC_PROMPT(p, jd) }] }] })) {
@@ -730,10 +731,9 @@ export function apply(ctx, config = {}) {
   ].join('\n')
 
   async function llmScoreResume(sc, resume, title) {
-    const llm = (typeof ctx.get === 'function' && ctx.get('llm')) || ctx.llm
-    if (!llm || typeof llm.stream !== 'function') return { ok: false, reason: 'no-llm' }
-    const provider = (config && config.jdProvider) || 'magpie'
-    const model = (config && config.jdModel) || 'workbuddy/deepseek-v4.1-flash'
+    const route = await resolveLlmRoute()
+    if (!route) return { ok: false, reason: 'no-llm-route', message: '未发现可用的 LLM 通道' }
+    const llm = route.llm, provider = route.provider, model = route.model
     let text = ''
     try {
       for await (const chunk of llm.stream({ provider, model, messages: [{ role: 'user', content: [{ type: 'text', text: SCORE_PROMPT(sc, resume, title) }] }] })) {
@@ -777,18 +777,47 @@ export function apply(ctx, config = {}) {
   }))
 
   // 深度适配性评估：LLM 按资深 HRBP 范式诊断（场景对齐/证据链/双向证伪/面试题）
-  async function llmDeepAssess(prompt) {
+  // ===== LLM 路由动态解析（不写死 provider/model：跟随 DSH 当前可用通道，换机器/换账号都能用）=====
+  let _llmRoute = null
+  let _llmRouteAt = 0
+  async function resolveLlmRoute(force) {
+    if (!force && _llmRoute && Date.now() - _llmRouteAt < 60000) return _llmRoute
     const llm = (typeof ctx.get === 'function' && ctx.get('llm')) || ctx.llm
-    if (!llm || typeof llm.stream !== 'function') return { ok: false, reason: 'no-llm' }
-    const provider = (config && config.jdProvider) || 'magpie'
-    const model = (config && config.jdModel) || 'workbuddy/deepseek-v4.1-flash'
+    if (!llm || typeof llm.stream !== 'function') return null
+    // 显式配置优先（用户可在插件 config 里指定）
+    if (config && config.jdProvider && config.jdModel) {
+      _llmRoute = { llm, provider: config.jdProvider, model: config.jdModel, source: 'config' }
+      _llmRouteAt = Date.now()
+      return _llmRoute
+    }
+    // 动态发现：遍历已注册 provider，找第一个有可用模型的
+    let providers = []
+    try { providers = (typeof llm.listProviders === 'function') ? (llm.listProviders() || []) : [] } catch (e) { providers = [] }
+    for (const p of providers) {
+      const pid = p && (p.id || p.provider || p)
+      if (!pid) continue
+      let models = []
+      try { models = (typeof llm.listModels === 'function') ? (await llm.listModels(pid) || []) : [] } catch (e) { models = [] }
+      const m = models.find(x => x && x.id) || null
+      if (m) { _llmRoute = { llm, provider: pid, model: m.id, source: 'auto' }; _llmRouteAt = Date.now(); return _llmRoute }
+    }
+    return null
+  }
+
+  async function llmDeepAssess(prompt) {
+    const route = await resolveLlmRoute()
+    if (!route) return { ok: false, reason: 'no-llm-route', message: '未发现可用的 LLM 通道（DSH 未配置模型或适配器未注册）' }
     let text = ''
     try {
-      for await (const chunk of llm.stream({ provider, model, temperature: 0, messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }] })) {
+      for await (const chunk of route.llm.stream({ provider: route.provider, model: route.model, temperature: 0, messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }] })) {
         if (chunk && typeof chunk.text === 'string' && chunk.type !== 'block-start') text += chunk.text
       }
-    } catch (e) { return { ok: false, reason: 'llm-error: ' + String((e && e.message) || e) } }
-    return { ok: true, text }
+    } catch (e) {
+      _llmRoute = null  // 失败后下次重新发现（可能是额度/账号/路由变更）
+      return { ok: false, reason: 'llm-error: ' + String((e && e.message) || e) }
+    }
+    if (!text.trim()) { _llmRoute = null; return { ok: false, reason: 'llm-empty-response' } }
+    return { ok: true, text, route: { provider: route.provider, model: route.model, source: route.source } }
   }
 
   // 统一取 LLM 文本（llmDeepAssess 返回 {ok,text}，直接当字符串用会把对象喂给 JSON.parse）
@@ -1631,10 +1660,9 @@ export function apply(ctx, config = {}) {
   ].join('\n')
 
   async function llmGenerateJD(p) {
-    const llm = (typeof ctx.get === 'function' && ctx.get('llm')) || ctx.llm
-    if (!llm || typeof llm.stream !== 'function') return { ok: false, reason: 'no-llm' }
-    const provider = (config && config.jdProvider) || 'magpie'
-    const model = (config && config.jdModel) || 'workbuddy/deepseek-v4.1-flash'
+    const route = await resolveLlmRoute()
+    if (!route) return { ok: false, reason: 'no-llm-route', message: '未发现可用的 LLM 通道' }
+    const llm = route.llm, provider = route.provider, model = route.model
     let text = ''
     try {
       for await (const chunk of llm.stream({
