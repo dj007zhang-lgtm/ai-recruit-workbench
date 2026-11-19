@@ -306,9 +306,13 @@ window.__ModuleLoader__.load({
     /* ============ 顶部：工具条 ============ */
     /* ============ 阶段漏斗（可点筛选，ATS 习惯） ============ */
     function Funnel({ counts, stage, setStage }) {
-      // 只显示有人的阶段（去掉一片 0 的噪音）；无筛选时显示"全部"
-      const visible = STAGES.filter(s => s !== '人才库' && (counts[s] || 0) > 0)
-      const total = visible.reduce((a, s) => a + (counts[s] || 0), 0)
+      // 「全部」= 在流程中的人（不含终态），否则 29 会把 19 个已淘汰混进来，语义混乱
+      const TERMINAL = ['已淘汰', '人才库', 'Offer拒绝', '已入职']
+      const inFlow = STAGES.filter(s => TERMINAL.indexOf(s) < 0 && (counts[s] || 0) > 0)
+      const total = inFlow.reduce((a, s) => a + (counts[s] || 0), 0)
+      // 终态单独列出（淘汰/人才库/Offer拒绝/已入职），让人能主动去看，而不是被混进"全部"
+      const terminal = STAGES.filter(s => TERMINAL.indexOf(s) >= 0 && (counts[s] || 0) > 0)
+      const visible = inFlow.concat(terminal)
       const chip = (key, label, n, active, onClick) => h('button', {
         key, type: 'button', onClick,
         style: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 9, fontSize: 12.5, cursor: 'pointer',
@@ -2761,13 +2765,22 @@ window.__ModuleLoader__.load({
           h('span', { style: { fontSize: 11.5, color: C.muted } }, '共 ' + ((data.candidates || []).length) + ' 位候选人'))
         let flowBody
         if (view === 'kanban') {
-          const d = data.detail && data.detail.candidate && data.detail.candidate.id === sel
+          // 详情只在「该候选人仍在看板可见分组内」时显示：
+          // 已淘汰/人才库/Offer拒绝等终态不在看板分组里，若仍按 id===sel 判断，
+          // 淘汰后详情会一直挂着（真实 bug）。与列表模式口径一致。
+          const kanbanStages = GROUPS.reduce((a, g) => a.concat(g.stages), [])
+          const inBoard = data.detail && data.detail.candidate && kanbanStages.indexOf(data.detail.candidate.stage) >= 0
+          const d = data.detail && data.detail.candidate && data.detail.candidate.id === sel && inBoard
           const detailPart = d
             ? h('div', { style: { marginTop: 12 } }, h(Detail, { detail: data.detail, onAction, lastSeq, onOpenLog: () => setNav('log'), positions: data.positions, panelHint: hint }))
             : h('div', { style: { ...card, marginTop: 12, fontSize: 11.5, color: C.muted, textAlign: 'center' } }, '点击上方任一候选人卡片查看详情与操作')
           flowBody = h('div', null, h(Kanban, { data, sel, setSel, onOpen: openWith, onMore: (st) => { setView('list'); flowSetStage(st) }, onAdopt: (id) => { act({ action: 'adopt', candidateId: id }) } }), detailPart)
         } else {
-          const visible = stage ? (data.candidates || []).filter(x => x.stage === stage) : (data.candidates || [])
+          // 与 Funnel 口径一致：「全部」= 在流程中的人（不含终态）；选了具体阶段就按阶段筛
+          const FLOW_STAGES = ['待评估', '待初试', '初试中', '待复试', '复试中', '待背调', '待发 Offer', 'Offer已发', 'Offer已接受', '待入职']
+          const visible = stage
+            ? (data.candidates || []).filter(x => x.stage === stage)
+            : (data.candidates || []).filter(x => FLOW_STAGES.indexOf(x.stage) >= 0)
           const detailOk = data.detail && data.detail.candidate && (!sel || visible.some(x => x.id === sel))
           let right
           if (detailOk) right = h('div', null, h(Detail, { detail: data.detail, onAction, lastSeq, onOpenLog: () => setNav('log'), positions: data.positions, panelHint: hint }))
