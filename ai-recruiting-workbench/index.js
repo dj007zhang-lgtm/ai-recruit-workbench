@@ -466,6 +466,17 @@ export function apply(ctx, config = {}) {
   }))
   // 关岗前影响面：列出该职位在途候选人
   dispose.push(ctx.webServer.register({
+    kind: 'exact', path: '/api/ai-recruiting/reevaluate-progress',
+    resource: async () => {
+      try {
+        const d = dataDir(); ensure(d)
+        const f = join(d, 'reevaluate.progress.json')
+        if (!existsSync(f)) return new Response(JSON.stringify({ running: false, total: 0, done: 0 }), { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8' } })
+        return new Response(readFileSync(f, 'utf8'), { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } })
+      } catch (e) { return new Response(JSON.stringify({ error: String(e && e.message || e) }), { status: 500 }) }
+    },
+  }))
+  dispose.push(ctx.webServer.register({
     kind: 'exact', path: '/api/ai-recruiting/reevaluate',
     handler: async (req, res) => {
       // 重新评估：对使用旧规则引擎（无 BARS grade）的候选人重跑 BARS。
@@ -488,13 +499,20 @@ export function apply(ctx, config = {}) {
         })
         if (dryRun) return replyJson(res, 200, { ok: true, dryRun: true, total: targets.length, candidates: targets.map(c => ({ id: c.id, name: c.name, stage: c.stage, engine: (c.deep && c.deep.engine) || 'rule', route: c.route })) })
         const results = []
-        for (const c of targets) {
+        const progFile = join(d, 'reevaluate.progress.json')
+        const writeProg = (o) => { try { writeFileSync(progFile, JSON.stringify(o)) } catch (e) {} }
+        writeProg({ running: true, total: targets.length, done: 0, current: '', startedAt: new Date().toISOString(), results: [] })
+        for (let ti = 0; ti < targets.length; ti++) {
+          const c = targets[ti]
+          writeProg({ running: true, total: targets.length, done: ti, current: c.name || c.id, startedAt: new Date().toISOString(), results: results.slice() })
           try {
             const r = await assessCandidate(d, c.id)
             results.push({ id: c.id, name: c.name, ok: !!r.ok, engine: r.engine, route: r.route, to: r.to || null, message: r.message || '', grade: r.diag && r.diag.grade, score: r.diag && r.diag.score })
           } catch (e) { results.push({ id: c.id, name: c.name, ok: false, error: String(e && e.message || e) }) }
+          writeProg({ running: true, total: targets.length, done: ti + 1, current: '', startedAt: new Date().toISOString(), results: results.slice() })
         }
         const done = results.filter(x => x.ok).length
+        writeProg({ running: false, total: targets.length, done, failed: targets.length - done, finishedAt: new Date().toISOString(), results })
         replyJson(res, 200, { ok: true, total: targets.length, done, failed: targets.length - done, results })
       } catch (e) { replyJson(res, 500, { ok: false, error: String(e && e.message || e) }) }
     },
