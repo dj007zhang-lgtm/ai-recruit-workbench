@@ -54,6 +54,11 @@ window.__ModuleLoader__.load({
     // 来源渠道：与 ledger.SOURCES 同一口径（规范渠道 + 自定义选项）
     const SRC = ['BOSS直聘', '猎聘', '智联招聘', '内推', '猎头', '自搜', '其他']
     const STAGES = ['待评估', '待初试', '初试中', '待复试', '复试中', '待背调', '待发 Offer', 'Offer已发', 'Offer已接受', '待入职', '已入职', 'Offer拒绝', '已淘汰', '人才库']
+    // 阶段口径（全站唯一来源，避免各处各写一套导致统计失真）：
+    //   FLOW_STAGES  = 在流程中（"全部"列表/看板只显示这些）
+    //   TERMINAL_STAGES = 终态（需点对应 chip 主动查看，不混入"全部"）
+    const TERMINAL_STAGES = ['已淘汰', '人才库', 'Offer拒绝', '已入职']
+    const FLOW_STAGES = STAGES.filter(x => TERMINAL_STAGES.indexOf(x) < 0)
     const REASONS = ['技能被低估', '证据不足', '岗位特殊要求', '模型误判', '其他']
 
     const C = {
@@ -307,11 +312,10 @@ window.__ModuleLoader__.load({
     /* ============ 阶段漏斗（可点筛选，ATS 习惯） ============ */
     function Funnel({ counts, stage, setStage }) {
       // 「全部」= 在流程中的人（不含终态），否则 29 会把 19 个已淘汰混进来，语义混乱
-      const TERMINAL = ['已淘汰', '人才库', 'Offer拒绝', '已入职']
-      const inFlow = STAGES.filter(s => TERMINAL.indexOf(s) < 0 && (counts[s] || 0) > 0)
+      const inFlow = STAGES.filter(s => TERMINAL_STAGES.indexOf(s) < 0 && (counts[s] || 0) > 0)
       const total = inFlow.reduce((a, s) => a + (counts[s] || 0), 0)
       // 终态单独列出（淘汰/人才库/Offer拒绝/已入职），让人能主动去看，而不是被混进"全部"
-      const terminal = STAGES.filter(s => TERMINAL.indexOf(s) >= 0 && (counts[s] || 0) > 0)
+      const terminal = STAGES.filter(s => TERMINAL_STAGES.indexOf(s) >= 0 && (counts[s] || 0) > 0)
       const visible = inFlow.concat(terminal)
       const chip = (key, label, n, active, onClick) => h('button', {
         key, type: 'button', onClick,
@@ -474,7 +478,8 @@ window.__ModuleLoader__.load({
       const [checked, setChecked] = React.useState({})
       const [busy, setBusy] = React.useState(false)
       const [msg, setMsg] = React.useState('')
-      let rows = stage ? all.filter(c => c.stage === stage) : all
+      // 与 Funnel/Kanban 口径一致：无筛选时只显示在流程中的人（终态需点对应 chip 查看）
+      let rows = stage ? all.filter(c => c.stage === stage) : all.filter(c => FLOW_STAGES.indexOf(c.stage) >= 0)
       if (q.trim()) {
         const k = q.trim().toLowerCase()
         rows = rows.filter(c => String(c.name || '').toLowerCase().indexOf(k) >= 0 || (c.skills || []).some(sk => sk.toLowerCase().indexOf(k) >= 0))
@@ -2762,7 +2767,9 @@ window.__ModuleLoader__.load({
             h('button', { type: 'button', onClick: () => setView('kanban'), style: { ...btn, border: 'none', borderRadius: 0, padding: '4px 12px', fontSize: 11.5, background: view === 'kanban' ? C.accent : 'transparent', color: view === 'kanban' ? '#fff' : 'inherit', fontWeight: view === 'kanban' ? 700 : 400 } }, '▤ 看板'),
             h('button', { type: 'button', onClick: () => setView('list'), style: { ...btn, border: 'none', borderRadius: 0, padding: '4px 12px', fontSize: 11.5, background: view === 'list' ? C.accent : 'transparent', color: view === 'list' ? '#fff' : 'inherit', fontWeight: view === 'list' ? 700 : 400 } }, '☰ 列表')),
           h('div', { style: { flex: 1 } }),
-          h('span', { style: { fontSize: 11.5, color: C.muted } }, '共 ' + ((data.candidates || []).length) + ' 位候选人'))
+          h('span', { style: { fontSize: 11.5, color: C.muted } },
+            '在流程 ' + (data.candidates || []).filter(x => FLOW_STAGES.indexOf(x.stage) >= 0).length + ' 人'
+            + ' · 已归档 ' + (data.candidates || []).filter(x => TERMINAL_STAGES.indexOf(x.stage) >= 0).length + ' 人'))
         let flowBody
         if (view === 'kanban') {
           // 详情只在「该候选人仍在看板可见分组内」时显示：
@@ -2777,7 +2784,6 @@ window.__ModuleLoader__.load({
           flowBody = h('div', null, h(Kanban, { data, sel, setSel, onOpen: openWith, onMore: (st) => { setView('list'); flowSetStage(st) }, onAdopt: (id) => { act({ action: 'adopt', candidateId: id }) } }), detailPart)
         } else {
           // 与 Funnel 口径一致：「全部」= 在流程中的人（不含终态）；选了具体阶段就按阶段筛
-          const FLOW_STAGES = ['待评估', '待初试', '初试中', '待复试', '复试中', '待背调', '待发 Offer', 'Offer已发', 'Offer已接受', '待入职']
           const visible = stage
             ? (data.candidates || []).filter(x => x.stage === stage)
             : (data.candidates || []).filter(x => FLOW_STAGES.indexOf(x.stage) >= 0)
