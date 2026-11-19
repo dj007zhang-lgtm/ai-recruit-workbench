@@ -305,6 +305,57 @@ export function apply(ctx, config = {}) {
     },
   }))
   dispose.push(ctx.webServer.register({
+    kind: 'exact', path: '/api/ai-recruiting/batch-invite-interviewer',
+    handler: async (req, res) => {
+      // 批量转发给面试官：为一批「待初试」候选人生成协作链接（每人一个 token），供一次性转发。
+      // 存在理由：HR 常见动作是"把这批人一起发给用人经理看"，逐个点链接转发太低效。
+      const a = await readPost(req, res, 32 * 1024)
+      if (a === null) return
+      try {
+        const d = dataDir(); ensure(d); migrateLegacy(d)
+        const s = fold(d)
+        const ids = Array.isArray(a.candidateIds) ? a.candidateIds.slice(0, 50) : []
+        if (!ids.length) return replyJson(res, 400, { ok: false, error: '请选择要转发的候选人' })
+        const interviewer = String(a.interviewer || '').slice(0, 20)
+        const round = String(a.round || '初试')
+        const place = String(a.place || '')
+        const baseUrl = String(a.baseUrl || '').replace(/\/+$/, '')
+        const out = []
+        for (const cid of ids) {
+          const c = s.byId[cid]
+          if (!c) continue
+          const token = 'iv' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+          // 写 interview.scheduled 事件建立 token 关联（不推进阶段，阶段仍由后续排期推进）
+          appendEvent(d, { type: 'interview.scheduled', actor: 'human', subject: { kind: 'candidate', id: cid },
+            payload: { at: '', place, interviewer, round, token, sharedForReview: true, note: '批量转发给面试官评估' } })
+          out.push({ candidateId: cid, name: c.name || '', stage: c.stage || '', url: baseUrl + '/api/ai-recruiting/interview?token=' + token, token })
+        }
+        replyJson(res, 200, { ok: true, count: out.length, items: out })
+      } catch (e) { replyJson(res, 400, { ok: false, error: String(e && e.message || e) }) }
+    },
+  }))
+  dispose.push(ctx.webServer.register({
+    kind: 'exact', path: '/api/ai-recruiting/interviewer-availability',
+    handler: async (req, res) => {
+      // 面试官反馈可面试时间：写 interviewer.availability 事件（不推进阶段，仅收集时间）
+      // 存在理由：排期是协作瓶颈——面试官的时间是稀缺资源，必须由招聘方汇总后再统一排，不能逐个私聊问。
+      const a = await readPost(req, res, 32 * 1024)
+      if (!a) return
+      try {
+        const d = dataDir(); ensure(d); migrateLegacy(d)
+        const hit = findByInterviewToken(d, String(a.token || ''))
+        if (!hit) return replyJson(res, 404, { ok: false, error: '链接无效或已过期' })
+        const slots = Array.isArray(a.slots) ? a.slots.filter(x => x && x.at).map(x => ({ at: String(x.at).slice(0, 20), note: String(x.note || '').slice(0, 60) })).slice(0, 10) : []
+        const note = String(a.note || '').slice(0, 500)
+        if (!slots.length && !note.trim()) return replyJson(res, 400, { ok: false, error: '请至少提供一个时段或时间偏好说明' })
+        const name = String(a.interviewer || hit.interview.interviewer || '面试官').trim().slice(0, 20)
+        const ev = appendEvent(d, { type: 'interviewer.availability', actor: 'human', subject: { kind: 'candidate', id: hit.candidateId },
+          payload: { interviewer: name, interviewerToken: String(a.token || ''), round: hit.interview.round || '初试', slots, note }, causedBy: hit.seq })
+        replyJson(res, 200, { ok: true, seq: ev.seq, message: '已收到你的可面试时间，招聘方会据此排期' })
+      } catch (e) { replyJson(res, 400, { ok: false, error: String(e && e.message || e) }) }
+    },
+  }))
+  dispose.push(ctx.webServer.register({
     kind: 'exact', path: '/api/ai-recruiting/interviewer-submit',
     handler: async (req, res) => {
       const a = await readPost(req, res, 64 * 1024)
@@ -1220,7 +1271,18 @@ export function apply(ctx, config = {}) {
         ? '<div class="done">✅ 你已提交过本次面评，感谢！招聘团队会据此推进。</div>' + interviewBriefHtml(brief, esc)
         : interviewBriefHtml(brief, esc) + `
       <div class="card form">
-        <h3>提交面评</h3>
+        <h3>① 反馈你的可面试时间</h3>
+        <div class="hint">招聘方会据此统一排期；填几个你有空的时段即可（可填多个）</div>
+        <div id="slots">
+          <div class="slot"><input type="datetime-local" class="slotTime"><input type="text" class="slotNote" placeholder="备注（可选，如 线上/线下）"></div>
+        </div>
+        <button type="button" id="addslot" class="ghost">+ 再加一个时段</button>
+        <label>时间偏好说明<textarea id="availNote" rows="2" placeholder="如：工作日晚上均可；周三全天不在；希望线上"></textarea></label>
+        <button type="button" id="submitAvail">提交可面试时间</button>
+        <div id="availMsg" class="msg"></div>
+      </div>
+      <div class="card form">
+        <h3>② 提交面评（面试后填）</h3>
         <label>你的姓名<input id="ivname" placeholder="面试官姓名" value="${esc(brief.interviewer)}"></label>
         <label>是否推荐通过
           <select id="pass"><option value="1">推荐通过</option><option value="0">不通过</option></select></label>
@@ -1233,6 +1295,29 @@ export function apply(ctx, config = {}) {
         <div id="msg" class="msg"></div>
       </div>
       <script>
+        // 可面试时间：动态增删时段
+        document.getElementById('addslot').onclick = () => {
+          const d = document.createElement('div'); d.className = 'slot';
+          d.innerHTML = '<input type="datetime-local" class="slotTime"><input type="text" class="slotNote" placeholder="备注（可选）">';
+          document.getElementById('slots').appendChild(d);
+        };
+        document.getElementById('submitAvail').onclick = async () => {
+          const slots = [];
+          document.querySelectorAll('#slots .slot').forEach(row => {
+            const t = row.querySelector('.slotTime').value;
+            const n = row.querySelector('.slotNote').value;
+            if (t) slots.push({ at: t, note: n || '' });
+          });
+          const note = document.getElementById('availNote').value;
+          if (!slots.length && !note.trim()) { const m = document.getElementById('availMsg'); m.className='msg bad'; m.textContent='请至少填一个时段或说明时间偏好'; return; }
+          const msg = document.getElementById('availMsg'); msg.className = 'msg'; msg.textContent = '提交中…';
+          try {
+            const r = await fetch('/api/ai-recruiting/interviewer-availability', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ token: ${JSON.stringify(token)}, interviewer: document.getElementById('ivname').value, slots, note }) });
+            const j = await r.json();
+            if (j.ok) { msg.className = 'msg ok'; msg.textContent = '✅ ' + j.message; }
+            else { msg.className = 'msg bad'; msg.textContent = j.error || '提交失败'; }
+          } catch (e) { msg.className = 'msg bad'; msg.textContent = '提交失败：' + e.message; }
+        };
         document.getElementById('submit').onclick = async () => {
           const dims = {}; document.querySelectorAll('select[data-dim]').forEach(s => { if (s.value) dims[s.dataset.dim] = s.value });
           const body = { token: ${JSON.stringify(token)}, interviewer: document.getElementById('ivname').value,
@@ -1256,7 +1341,7 @@ export function apply(ctx, config = {}) {
       '<div class="card"><h3>简历原文</h3><pre class="resume">' + esc(b.resume) + '</pre></div>'
   }
   function interviewerPageCss() {
-    return `*{box-sizing:border-box}body{margin:0;background:#0f1420;color:#e8eef8;font:14px/1.6 -apple-system,"PingFang SC",sans-serif}.wrap{max-width:720px;margin:0 auto;padding:16px}.hd h1{margin:8px 0 2px;font-size:20px}.hd .meta{color:#94a3c0;font-size:12px;margin-bottom:12px}.card{background:#1a2033;border:1px solid #2b3350;border-radius:12px;padding:14px 16px;margin-bottom:12px}.name{font-size:18px;font-weight:700}.tag{font-size:11px;background:#252d45;color:#94a3c0;border-radius:8px;padding:1px 8px;font-weight:400}.aihead{display:flex;gap:8px;align-items:center;margin-bottom:8px}.badge{font-size:11px;background:rgba(79,132,255,.18);color:#7aa2ff;border-radius:7px;padding:1px 9px;font-weight:600}.g{font-size:16px}.g,.g[data-g=C]{color:#f0ad4e}.sc{color:#94a3c0;font-size:12px}.sum{color:#c4cde0;font-size:12.5px}.db{color:#f0ad4e;font-size:12px;margin-top:6px}.dims{margin-top:8px}.dim{display:flex;gap:8px;align-items:center;font-size:12px;padding:3px 0;border-top:1px solid #252d45}.dn{flex:1;color:#c4cde0}.lv{font-weight:700;color:#7aa2ff}.resume{white-space:pre-wrap;font:12px/1.7 inherit;color:#aeb8cc;max-height:340px;overflow:auto;margin:0}.form label{display:block;margin:10px 0;font-size:12.5px;color:#c4cde0}.form input,.form select,.form textarea{width:100%;margin-top:4px;background:#0f1420;border:1px solid #2b3350;color:#e8eef8;border-radius:8px;padding:8px 10px;font:inherit}.form textarea{resize:vertical}.dimsec{margin:10px 0}.dt{font-size:12px;color:#94a3c0;margin-bottom:6px}.dr{display:flex;gap:8px;align-items:center;font-size:12px;margin:4px 0}.dr span{flex:1}.dr select{width:90px;flex:none}.form button{width:100%;background:#4f84ff;color:#fff;border:0;border-radius:9px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px}.msg{margin-top:8px;font-size:12.5px}.msg.ok{color:#34d399}.msg.bad{color:#f47171}.done{background:rgba(52,199,123,.12);border:1px solid rgba(52,199,123,.4);color:#34d399;padding:14px;border-radius:10px;margin-bottom:12px}.err{background:rgba(244,113,113,.1);border:1px solid rgba(244,113,113,.4);color:#f47171;padding:16px;border-radius:10px}.card h3{margin:0 0 8px;font-size:13px}`
+    return `*{box-sizing:border-box}body{margin:0;background:#0f1420;color:#e8eef8;font:14px/1.6 -apple-system,"PingFang SC",sans-serif}.wrap{max-width:720px;margin:0 auto;padding:16px}.hd h1{margin:8px 0 2px;font-size:20px}.hd .meta{color:#94a3c0;font-size:12px;margin-bottom:12px}.card{background:#1a2033;border:1px solid #2b3350;border-radius:12px;padding:14px 16px;margin-bottom:12px}.name{font-size:18px;font-weight:700}.tag{font-size:11px;background:#252d45;color:#94a3c0;border-radius:8px;padding:1px 8px;font-weight:400}.aihead{display:flex;gap:8px;align-items:center;margin-bottom:8px}.badge{font-size:11px;background:rgba(79,132,255,.18);color:#7aa2ff;border-radius:7px;padding:1px 9px;font-weight:600}.g{font-size:16px}.g,.g[data-g=C]{color:#f0ad4e}.sc{color:#94a3c0;font-size:12px}.sum{color:#c4cde0;font-size:12.5px}.db{color:#f0ad4e;font-size:12px;margin-top:6px}.dims{margin-top:8px}.dim{display:flex;gap:8px;align-items:center;font-size:12px;padding:3px 0;border-top:1px solid #252d45}.dn{flex:1;color:#c4cde0}.lv{font-weight:700;color:#7aa2ff}.resume{white-space:pre-wrap;font:12px/1.7 inherit;color:#aeb8cc;max-height:340px;overflow:auto;margin:0}.form label{display:block;margin:10px 0;font-size:12.5px;color:#c4cde0}.form input,.form select,.form textarea{width:100%;margin-top:4px;background:#0f1420;border:1px solid #2b3350;color:#e8eef8;border-radius:8px;padding:8px 10px;font:inherit}.form textarea{resize:vertical}.dimsec{margin:10px 0}.dt{font-size:12px;color:#94a3c0;margin-bottom:6px}.dr{display:flex;gap:8px;align-items:center;font-size:12px;margin:4px 0}.dr span{flex:1}.dr select{width:90px;flex:none}.form button{width:100%;background:#4f84ff;color:#fff;border:0;border-radius:9px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px}.msg{margin-top:8px;font-size:12.5px}.msg.ok{color:#34d399}.msg.bad{color:#f47171}.done{background:rgba(52,199,123,.12);border:1px solid rgba(52,199,123,.4);color:#34d399;padding:14px;border-radius:10px;margin-bottom:12px}.err{background:rgba(244,113,113,.1);border:1px solid rgba(244,113,113,.4);color:#f47171;padding:16px;border-radius:10px}.card h3{margin:0 0 8px;font-size:13px}.hint{font-size:11.5px;color:#94a3c0;margin-bottom:8px}.slot{display:flex;gap:6px;margin-bottom:6px}.slot input{flex:1}.slot .slotNote{flex:.8}.ghost{background:transparent!important;border:1px dashed #3b4568!important;color:#94a3c0!important;font-weight:400!important;padding:8px!important;font-size:12.5px!important}`
   }
 
   // ===== 评估 → 面试验证任务：把 BARS 评估结果转成「面试要验证什么」的结构化任务清单 =====

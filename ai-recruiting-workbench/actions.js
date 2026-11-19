@@ -61,6 +61,18 @@ export function workbenchData(d, candidateId, buildDashboard, opts) {
   const s = fold(d)
   const dashboard = buildDashboard(d, opts)
   const items = s.inbox.map(x => ({ ...x, name: x.name || (s.byId[x.id] || {}).name || x.id }))
+  // 面试官时间反馈汇总：按候选人归集 interviewer.availability 事件（招聘方排期依据）
+  const availMap = {}
+  try {
+    for (const e of readEvents(d)) {
+      if (e.type !== 'interviewer.availability') continue
+      const cid0 = (e.subject || {}).id
+      if (!cid0) continue
+      const p0 = e.payload || {}
+      availMap[cid0] = availMap[cid0] || []
+      availMap[cid0].push({ interviewer: p0.interviewer || '', round: p0.round || '', slots: p0.slots || [], note: p0.note || '', ts: e.ts, seq: e.seq })
+    }
+  } catch (e) {}
   const selectedId = candidateId || (items[0] || {}).id || (s.candidates[0] || {}).id || null
   const c = selectedId ? s.byId[selectedId] : null
   let detail = null
@@ -71,7 +83,7 @@ export function workbenchData(d, candidateId, buildDashboard, opts) {
     const r = replay(d, c.id)
     detail = {
       candidate: {
-        id: c.id, name: c.name, pid: c.pid, source: c.source, stage: c.stage, mail: c.mail || null, resume: c.resume, mail: c.mail || null,
+        id: c.id, name: c.name, pid: c.pid, source: c.source, stage: c.stage, mail: c.mail || null, resume: c.resume, availability: availMap[c.id] || null,
         scores: c.scores, conf: c.conf, route: c.route, evidence: c.evidence,
         undetermined: c.undetermined, doubts: c.doubts, summary: c.summary,
         gateResults: c.gateResults || [], weighted: c.weighted != null ? c.weighted : null,

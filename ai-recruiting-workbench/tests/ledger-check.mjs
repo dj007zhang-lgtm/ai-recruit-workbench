@@ -40,12 +40,25 @@ for (const e of evs) {
 for (const e of evs) {
   if (e.type === 'stage.advanced' && !e.causedBy && String((e.payload || {}).reason || '').indexOf('修正') < 0) report('mid', '#' + e.seq + ' 推进缺少 causedBy')
 }
-// 4. 同一候选人重复 resume.received（姓名相同）
-const nameCount = {}
+// 4. 同一候选人 ID 多条 resume.received
+// 说明：同一人多次投递是真实业务现象（换岗再投/重复上传），系统已按 name+phone+email+position 去重并合并，
+// 因此这里只在「同一候选人出现多条且来源不同」时才提示（可能渠道归因有问题），同源重复属正常。
+const recCount = {}
 for (const e of evs) {
-  if (e.type === 'resume.received') { const n = (e.payload || {}).name || ''; nameCount[n] = (nameCount[n] || 0) + 1 }
+  if (e.type !== 'resume.received') continue
+  const cid0 = (e.subject || {}).id
+  if (!cid0) continue
+  recCount[cid0] = recCount[cid0] || []
+  recCount[cid0].push((e.payload || {}).source || '')
 }
-for (const n of Object.keys(nameCount)) if (nameCount[n] > 1) report('mid', '候选人「' + n + '」有 ' + nameCount[n] + ' 条 resume.received（重复投递？）')
+for (const cid0 of Object.keys(recCount)) {
+  const list = recCount[cid0]
+  if (list.length < 2) continue
+  const uniqSrc = Array.from(new Set(list.filter(x => x && String(x).trim())))
+  const nm = (s.byId[cid0] && s.byId[cid0].name) || cid0
+  if (uniqSrc.length > 1) report('mid', '候选人「' + nm + '」多次投递且来源不一致（' + uniqSrc.join('/') + '），请核对渠道归因')
+  else console.log('⚪ 正常：候选人「' + nm + '」同源重复投递 ' + list.length + ' 次（已去重合并）')
+}
 // 5. 冻结阶段现状检查：已淘汰/已入职 的人是否有后续自动推进（说明历史脏数据已被覆盖）
 for (const c of s.candidates) {
   if (c.stage === '待发 Offer' && !['已评估', '待初试', '初试中', '待复试', '复试中'].includes(c.stage)) { /* noop */ }

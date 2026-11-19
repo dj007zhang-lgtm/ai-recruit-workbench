@@ -24,7 +24,7 @@ export const EVENT_TYPES = [
   'position.created', 'position.updated', 'resume.received', 'resume.deduped',
   'assessment.recorded', 'decision.made', 'correction.made',
   'standard.proposed', 'standard.validated', 'standard.released',
-  'invite.sent', 'interview.scheduled', 'feedback.submitted', 'offer.sent', 'offer.accepted', 'offer.declined', 'onboarding.scheduled', 'hire.confirmed', 'background.check',
+  'invite.sent', 'interview.scheduled', 'interviewer.availability', 'feedback.submitted', 'offer.sent', 'offer.accepted', 'offer.declined', 'onboarding.scheduled', 'hire.confirmed', 'background.check',
   'stage.advanced', 'resume.backfilled', 'assessment.requested', 'name.fixed', 'candidate.bound',
   'salary.advised', 'resume.reparsed',
 ]
@@ -73,7 +73,7 @@ export function appendEvent(dir, input) {
     'position.created': '职位', 'position.updated': '职位更新', 'resume.received': '接入', 'resume.deduped': '去重',
     'assessment.recorded': '评估', 'decision.made': '决策', 'correction.made': '纠偏', 'salary.advised': '薪酬建议', 'resume.reparsed': '简历重解析',
     'standard.proposed': '规范建议', 'standard.validated': '规范验证', 'standard.released': '规范发布',
-    'invite.sent': '邀约', 'interview.scheduled': '面试', 'feedback.submitted': '面评',
+    'invite.sent': '邀约', 'interview.scheduled': '面试', 'interviewer.availability': '面试官时间反馈', 'feedback.submitted': '面评',
     'offer.sent': 'Offer已发', 'background.check': '背调', 'offer.accepted': 'Offer已接受', 'offer.declined': 'Offer被拒/放弃', 'onboarding.scheduled': '安排入职', 'hire.confirmed': '确认入职', 'stage.advanced': '阶段', 'assessment.requested': '请求评估', 'name.fixed': '改名', 'candidate.bound': '绑定岗位',
   }
   appendFileSync(join(dir, 'events.log'),

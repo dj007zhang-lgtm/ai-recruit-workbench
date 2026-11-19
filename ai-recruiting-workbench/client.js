@@ -135,40 +135,6 @@ window.__ModuleLoader__.load({
           : null)
     }
 
-    // ===== AI 数据洞察：读全局数据 → 生成 HR 可执行建议（规则驱动，稳/快/可解释；LLM 可后续增强）=====
-    // 每条洞察 = { level: 'warn'|'info'|'good', dim: '管理者'|'招聘执行'|'AI能力', title, action }
-    function deriveInsights(dash, data) {
-      const out = []
-      const hiring = dash.hiring || []
-      const sf = dash.sourceFunnel || []
-      const gd = (dash.aiPerf || {}).gradeDist || {}
-      const alerts = (data.alerts || [])
-      const overdueN = (dash.overdue || []).length
-      // ① 缺口无人跟：有缺口但在途为 0 → 断层风险（管理者/执行）
-      const dry = hiring.filter(h => (h.gap || 0) > 0 && (h.inFlow || 0) === 0)
-      if (dry.length) out.push({ level: 'warn', dim: '招聘执行', title: dry.map(h => h.title).join('、') + ' 有缺口但无人在途', action: '立即启动 sourcing，否则缺口将持续空置' })
-      // ② 在途不足以覆盖缺口：在途 < 缺口 → 产能不足（管理者）
-      const thin = hiring.filter(h => (h.gap || 0) > 0 && (h.inFlow || 0) > 0 && (h.inFlow || 0) < (h.gap || 0))
-      if (thin.length) out.push({ level: 'info', dim: '管理者', title: thin.map(h => h.title + '(在途' + h.inFlow + '/缺' + h.gap + ')').join('、'), action: '在途不足以覆盖缺口，按当前转化率需扩大漏斗上游' })
-      // ③ 超时/积压（执行）
-      if (alerts.length || overdueN) {
-        const items = alerts.slice(0, 3).map(a => a.name + '(' + a.days + '天)').join('、')
-        out.push({ level: 'warn', dim: '招聘执行', title: '有 ' + (alerts.length + overdueN) + ' 人跟进超时' + (items ? '：' + items : ''), action: '今天优先跟进，避免候选人流失' })
-      }
-      // ④ 渠道异常：投了但 0 进面（执行/管理者）
-      const badSrc = sf.filter(x => (x.total || 0) >= 2 && (x.interview || 0) === 0)
-      if (badSrc.length) out.push({ level: 'info', dim: '招聘执行', title: badSrc.map(x => x.source + ' 投' + x.total + '人 0 进面').join('、'), action: '渠道质量存疑，核对简历匹配度或渠道定位' })
-      // ⑤ AI 质量：C 占比过高 → 岗位门槛/简历池偏差（AI能力）
-      const gTotal = (gd.S || 0) + (gd.A || 0) + (gd.B || 0) + (gd.C || 0)
-      if (gTotal >= 5) {
-        const cRate = Math.round((gd.C || 0) / gTotal * 100)
-        if (cRate >= 60) out.push({ level: 'info', dim: 'AI能力', title: 'AI 初筛 C 档占 ' + cRate + '%（' + gd.C + '/' + gTotal + '）', action: '比例偏高，说明简历池与岗位门槛偏差大，建议复核评分卡或渠道' })
-      }
-      // ⑥ 无待办时的正反馈（执行）
-      if (!out.length) out.push({ level: 'good', dim: '招聘执行', title: '当前无阻塞：无超时、缺口均有在途覆盖', action: '保持节奏即可；可提前储备人才库' })
-      return out
-    }
-
     // ===== 轻量 SVG 图表库（零依赖，数据大屏用）=====
     // 环形图：segments=[{label,value,color}]，中心显示总数
     function DonutChart({ segments, size, thickness, centerTop, centerSub }) {
@@ -188,24 +154,6 @@ window.__ModuleLoader__.load({
         h('g', null, ...arcs),
         centerTop != null ? h('text', { x: cx, y: cy - 1, textAnchor: 'middle', fill: C.text, fontSize: 20, fontWeight: 800 }, String(centerTop)) : null,
         centerSub ? h('text', { x: cx, y: cy + 15, textAnchor: 'middle', fill: C.muted, fontSize: 10.5 }, centerSub) : null)
-    }
-    // 迷你折线（sparkline）：values=[数]
-    function Sparkline({ values, width, height, color }) {
-      const W = width || 160, H = height || 36, pad = 2
-      const vs = (values || []).map(v => Number(v) || 0)
-      if (!vs.length) return h('div', { style: { height: H } })
-      const max = Math.max(...vs, 1), min = Math.min(...vs, 0)
-      const span = (max - min) || 1
-      const step = (W - pad * 2) / Math.max(1, vs.length - 1)
-      const pts = vs.map((v, i) => [pad + i * step, H - pad - ((v - min) / span) * (H - pad * 2)])
-      const d = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ')
-      const area = d + ' L' + pts[pts.length - 1][0].toFixed(1) + ' ' + (H - pad) + ' L' + pts[0][0].toFixed(1) + ' ' + (H - pad) + ' Z'
-      const gid = 'sg' + (color || '').replace(/[^a-z0-9]/gi, '') + W
-      return h('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, style: { display: 'block' } },
-        h('defs', null, h('linearGradient', { id: gid, x1: '0', y1: '0', x2: '0', y2: '1' },
-          h('stop', { offset: '0%', stopColor: color || C.accent, stopOpacity: .35 }), h('stop', { offset: '100%', stopColor: color || C.accent, stopOpacity: 0 }))),
-        h('path', { d: area, fill: 'url(#' + gid + ')' }),
-        h('path', { d: d, fill: 'none', stroke: color || C.accent, strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' }))
     }
     // 水平条形图：items=[{label,value,color}]，按最大值比例
     function BarList({ items, max, barH, labelW }) {
@@ -404,6 +352,71 @@ window.__ModuleLoader__.load({
     }
 
     /* ============ 候选人表格（千级可用：排序 / 筛选 / 多选批量） ============ */
+    // 批量转发面试官：把待初试的人一次性发给面试官评估，并回收其可面试时间。
+    // 存在理由：排期是真实协作瓶颈——HR 的动作是"这批人一起发出去"，而不是逐个私聊；
+    // 面试官的时间是稀缺资源，必须结构化回收（而非微信里零散回复），才能统一排期。
+    function BatchInviteCard({ data, onDone }) {
+      const [open, setOpen] = React.useState(false)
+      const [interviewer, setInterviewer] = React.useState('')
+      const [round, setRound] = React.useState('初试')
+      const [place, setPlace] = React.useState('')
+      const [picked, setPicked] = React.useState([])
+      const [busy, setBusy] = React.useState(false)
+      const [links, setLinks] = React.useState(null)
+      const [msg, setMsg] = React.useState('')
+      // 待初试 + 初试中（已发但还没排期的）都可用于转发
+      const pool = (data.candidates || []).filter(c => ['待初试', '初试中'].indexOf(c.stage) >= 0)
+      const toggle = (id) => setPicked(v => v.indexOf(id) >= 0 ? v.filter(x => x !== id) : v.concat([id]))
+      const allPick = () => setPicked(picked.length === pool.length ? [] : pool.map(c => c.id))
+      const run = async () => {
+        if (!picked.length) { setMsg('请先勾选候选人'); return }
+        setBusy(true); setMsg('')
+        try {
+          const j = await api('/api/ai-recruiting/batch-invite-interviewer', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ candidateIds: picked, interviewer, round, place, baseUrl: window.location.origin }) })
+          if (j && j.ok) { setLinks(j.items || []); setMsg('已生成 ' + j.count + ' 个面试官协作链接，可一次性复制转发') }
+          else setMsg('生成失败：' + ((j && j.error) || '未知'))
+        } catch (e) { setMsg('生成失败：' + String(e.message || e)) }
+        finally { setBusy(false) }
+      }
+      const copyAll = () => {
+        const txt = (links || []).map((x, i) => (i + 1) + '. ' + x.name + '\uFF08' + x.stage + '\uFF09' + String.fromCharCode(10) + x.url).join(String.fromCharCode(10, 10))
+        try { navigator.clipboard.writeText(txt); setMsg('已复制全部链接，可直接粘贴给面试官') } catch (e) { setMsg('复制失败，请手动选择链接') }
+      }
+      if (!pool.length) return null
+      return h('div', { style: { ...card, marginBottom: 10, padding: '10px 13px' } },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+          h('span', { style: { fontSize: 13 } }, '📤'),
+          h('b', { style: { fontSize: 12.5 } }, '批量转发面试官'),
+          h('span', { style: { fontSize: 10.5, color: C.muted } }, pool.length + ' 人待初试 · 面试官填完可面试时间后你来排期'),
+          h('button', { type: 'button', style: { ...btn, marginLeft: 'auto', padding: '2px 10px', fontSize: 11 }, onClick: () => setOpen(v => !v) }, open ? '收起' : '展开')),
+        open ? h('div', { style: { marginTop: 9 } },
+          h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 } },
+            h('div', { style: { width: 130 } }, h('label', { style: { fontSize: 10.5, color: C.muted } }, '面试官',
+              h('input', { style: input, placeholder: '姓名', value: interviewer, onChange: e => setInterviewer(e.target.value) }))),
+            h('div', { style: { width: 100 } }, h('label', { style: { fontSize: 10.5, color: C.muted } }, '轮次',
+              h('select', { style: input, value: round, onChange: e => setRound(e.target.value) }, h('option', null, '初试'), h('option', null, '复试')))),
+            h('div', { style: { width: 150 } }, h('label', { style: { fontSize: 10.5, color: C.muted } }, '形式/地点',
+              h('input', { style: input, placeholder: '如 腾讯会议', value: place, onChange: e => setPlace(e.target.value) }))),
+            h('button', { type: 'button', style: { ...btn, alignSelf: 'flex-end', padding: '5px 10px', fontSize: 11 }, onClick: allPick }, picked.length === pool.length ? '取消全选' : '全选')),
+          h('div', { style: { maxHeight: 190, overflowY: 'auto', border: '1px solid ' + C.border, borderRadius: 8, padding: '6px 8px', marginBottom: 8 } },
+            ...pool.map(c => {
+              const av = c.availability || []
+              const hasAv = av.length
+              return h('label', { key: c.id, style: { display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, padding: '3px 0', cursor: 'pointer' } },
+                h('input', { type: 'checkbox', checked: picked.indexOf(c.id) >= 0, onChange: () => toggle(c.id) }),
+                h('span', { style: { flex: 1 } }, c.name || c.id),
+                h('span', { style: { fontSize: 10, color: C.muted } }, c.stage),
+                hasAv ? h('span', { style: { fontSize: 9.5, color: C.good, background: tint(C.good, .12), borderRadius: 5, padding: '0 5px' } }, '已回时间') : null)
+            })),
+          h('div', { style: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' } },
+            h('button', { type: 'button', style: primary, disabled: busy, onClick: run }, busy ? '生成中…' : '生成协作链接（' + picked.length + '）'),
+            links && links.length ? h('button', { type: 'button', style: { ...btn }, onClick: copyAll }, '📋 复制全部链接') : null,
+            msg ? h('span', { style: { fontSize: 10.5, color: /失败/.test(msg) ? C.bad : C.good } }, msg) : null),
+          links && links.length ? h('div', { style: { marginTop: 8, maxHeight: 150, overflowY: 'auto', fontSize: 10, color: C.muted, lineHeight: 1.6 } },
+            ...links.map((x, i) => h('div', { key: i, style: { padding: '2px 0', wordBreak: 'break-all' } }, (i + 1) + '. ' + x.name + ' → ' + x.url))) : null) : null)
+    }
+
     function CandidateList({ data, sel, setSel, stage, setStage, onAction }) {
       const all = data.candidates || []
       const [q, setQ] = React.useState('')
@@ -1183,6 +1196,14 @@ window.__ModuleLoader__.load({
           const url = window.location.origin + '/api/ai-recruiting/interview?token=' + encodeURIComponent(c.lastInvite.token)
           try { navigator.clipboard.writeText(url); setToast('已复制面试官链接，可直接发给面试官') } catch (e) { setToast('链接：' + url) }
         } }, '🔗 面试官链接') : null,
+        // 面试官反馈的可面试时间（招聘方据此排期；点时段即填入选定时间）
+        (c.availability && c.availability.length) ? h('div', { style: { ...card, marginTop: 8, padding: '9px 12px', borderColor: tint(C.good, .35), background: tint(C.good, .05) } },
+          h('div', { style: { fontSize: 11, fontWeight: 700, color: C.good, marginBottom: 5 } }, '📅 面试官反馈的可面试时间'),
+          ...c.availability.map((av, i) => h('div', { key: i, style: { fontSize: 11, lineHeight: 1.6, marginBottom: 4 } },
+            h('span', { style: { fontWeight: 600 } }, av.interviewer || '面试官'), h('span', { style: { color: C.muted } }, ' · ' + (av.round || '') + '：'),
+            (av.slots && av.slots.length) ? h('span', null, ' ' + av.slots.map(s => s.at + (s.note ? '(' + s.note + ')' : '')).join('、')) : null,
+            av.note ? h('div', { style: { color: C.muted, paddingLeft: 8 } }, '偏好：' + av.note) : null)),
+          h('button', { type: 'button', style: { ...btn, padding: '2px 9px', fontSize: 10.5, marginTop: 4 }, onClick: () => setPanel('interview') }, '去排期 →')) : null,
         // 交付物导出：Offer 函 / 面试评估表 / 候选人报告（数据全部来自账本，不臆造）
         h('div', { style: { display: 'flex', gap: 4, alignItems: 'center' } },
           h('span', { style: { fontSize: 10.5, color: C.muted } }, '导出'),
@@ -2666,7 +2687,7 @@ window.__ModuleLoader__.load({
           const detailPart = d
             ? h('div', { style: { marginTop: 12 } }, h(Detail, { detail: data.detail, onAction, lastSeq, onOpenLog: () => setNav('log'), positions: data.positions, panelHint: hint }))
             : h('div', { style: { ...card, marginTop: 12, fontSize: 11.5, color: C.muted, textAlign: 'center' } }, '点击上方任一候选人卡片查看详情与操作')
-          flowBody = h('div', null, h(Funnel, { counts, stage, setStage: flowSetStage }), h(Kanban, { data, sel, setSel, onOpen: openWith, onMore: (st) => { setView('list'); flowSetStage(st) }, onAdopt: (id) => { act({ action: 'adopt', candidateId: id }) } }), detailPart)
+          flowBody = h('div', null, h(Funnel, { counts, stage, setStage: flowSetStage }), h(BatchInviteCard, { data, onDone: reload }), h(Kanban, { data, sel, setSel, onOpen: openWith, onMore: (st) => { setView('list'); flowSetStage(st) }, onAdopt: (id) => { act({ action: 'adopt', candidateId: id }) } }), detailPart)
         } else {
           const visible = stage ? (data.candidates || []).filter(x => x.stage === stage) : (data.candidates || [])
           const detailOk = data.detail && data.detail.candidate && (!sel || visible.some(x => x.id === sel))
