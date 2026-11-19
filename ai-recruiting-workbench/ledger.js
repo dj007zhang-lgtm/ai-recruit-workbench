@@ -355,7 +355,12 @@ export function fold(dir, events) {
       else item = { kind: '需面试排雷', risk: 3, reason: 'B 级 · 建议面试中重点排雷' }
     } else if (c.stage === '待发 Offer') {
       item = { kind: '待发 Offer', risk: 5, reason: '流程已到待决策，请给最终结论（淘汰/Offer/进面试）' }
+    } else if (['待初试', '初试中', '待复试', '复试中', '待背调', 'Offer已发', 'Offer已接受', '待入职'].indexOf(c.stage) >= 0) {
+      // 已在流程中的人不需要「AI 推荐进初试」——那是初筛阶段的动作，重复提示会误导（真实 bug：
+      // 人已到待背调，概览还在提示"AI 推荐进初试，请拍板"）。流程内阶段无人工待办 → item 保持 null。
+      item = null
     } else if (grade === 'S' || grade === 'A') {
+      // 兜底：仅当不在任何流程阶段时才提示拍板（如已淘汰后重新出现的历史数据）
       item = { kind: '需拍板·推荐', risk: 4, reason: (grade + ' 级 · ' + (c.weighted != null ? c.weighted : '') + ' 分）AI 推荐进初试，请拍板') }
     } else if (grade === 'B') {
       const rf = ((c.deep && c.deep.redFlags) || []).length

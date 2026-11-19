@@ -150,12 +150,24 @@ export function handleUpload(d, a, opts = {}) {
     }
   }
   if (dup) {
+    // 跨岗位锁定：同一人已在某岗位流程中，投其他岗位不另开流程（避免一人多流程、状态打架）
+    const curPos = dup.pid ? s0.positions.find(p => p.id === dup.pid) : null
+    const appliedPos = pid ? s0.positions.find(p => p.id === pid) : null
+    const crossPos = !!(pid && dup.pid && pid !== dup.pid)
+    const locked = crossPos && ['待初试', '初试中', '待复试', '复试中', '待背调', '待发 Offer', 'Offer已发', 'Offer已接受', '待入职', '已入职'].indexOf(dup.stage) >= 0
+    const lockNote = locked
+      ? ('已在「' + ((curPos && curPos.title) || dup.pid) + '」流程中（' + dup.stage + '），本次「' + ((appliedPos && appliedPos.title) || pid) + '」投递已记录意向但不开新流程')
+      : ''
     const ev = appendEvent(d, {
       type: 'resume.received', actor: 'system', subject: { kind: 'candidate', id: dup.id },
-      payload: { duplicateAttachment: relFile, dupReason, appliedPid: pid, mail: { from: a.from || '', subject: a.subject || '', date: a.date || '', messageId: mailId, sourceReason: a.sourceReason || '', sourceConf: a.sourceConf || '' } },
+      payload: { duplicateAttachment: relFile, dupReason, appliedPid: pid, appliedPidTitle: (appliedPos && appliedPos.title) || '',
+        crossPosition: crossPos, lockedByFlow: locked, lockNote,
+        mail: { from: a.from || '', subject: a.subject || '', date: a.date || '', messageId: mailId, sourceReason: a.sourceReason || '', sourceConf: a.sourceConf || '' } },
       causedBy: dup.seqs ? dup.seqs[dup.seqs.length - 1] : null,
     })
-    return { ok: true, duplicate: true, duplicateOf: dup.id, candidateId: dup.id, seq: ev.seq, file: relFile, reason: dupReason, note: '重复投递，已并入原候选人并留档原件' }
+    return { ok: true, duplicate: true, duplicateOf: dup.id, candidateId: dup.id, seq: ev.seq, file: relFile,
+      reason: dupReason, crossPosition: crossPos, lockedByFlow: locked, lockNote,
+      note: locked ? lockNote : '重复投递，已并入原候选人并留档原件' }
   }
 
   // ===== 前置校验 2：技术栈适配预检（投错岗位）=====

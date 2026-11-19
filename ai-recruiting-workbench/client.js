@@ -1930,7 +1930,8 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = React.useState(false)
       const go = async (files) => {
         const list = Array.from(files || []); if (!list.length) return
-        setBusy(true); let ok = 0, ocr = 0, fail = 0, pendingLLM = 0
+        setBusy(true); let ok = 0, ocr = 0, fail = 0, pendingLLM = 0, locked = 0
+        const lockNotes = []
         const auto = []
         for (const file of list) {
           try {
@@ -1939,7 +1940,8 @@ window.__ModuleLoader__.load({
             if (j.needsOcr) ocr++
             else {
               ok++
-              if (j.autoScreen && j.autoScreen.pending) pendingLLM++
+              if (j.lockedByFlow) { locked++; if (j.lockNote) lockNotes.push(j.lockNote) }
+              else if (j.autoScreen && j.autoScreen.pending) pendingLLM++
               else if (j.autoScreen && j.autoScreen.to) auto.push((j.name || '') + '→' + j.autoScreen.to)
             }
           } catch (e) { fail++ }
@@ -1947,6 +1949,7 @@ window.__ModuleLoader__.load({
         setBusy(false)
         setMsg(ok + ' 份已接入' + (auto.length ? '，自动初筛：' + auto.slice(0, 4).join('，') + (auto.length > 4 ? ' 等' : '') : '')
           + (pendingLLM ? '；⚠ ' + pendingLLM + ' 份等待 AI（网关不可用，未使用规则替代，AI 恢复后重新初筛）' : '')
+          + (locked ? '；🔒 ' + locked + ' 份为跨岗位投递，已在其他岗位流程中，未开新流程' + (lockNotes.length ? '（' + lockNotes[0] + '）' : '') : '')
           + (ocr ? '；' + ocr + ' 份待补录' : '') + (fail ? '；' + fail + ' 份失败' : ''))
         onDone()
       }
