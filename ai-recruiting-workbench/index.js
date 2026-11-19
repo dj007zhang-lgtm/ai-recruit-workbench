@@ -484,6 +484,7 @@ export function apply(ctx, config = {}) {
             if (n < 8) out.chunks.push({ type: chunk && chunk.type, keys: chunk ? Object.keys(chunk) : null, text: chunk && typeof chunk.text === 'string' ? chunk.text.slice(0, 40) : null, reason: chunk && chunk.reason ? JSON.stringify(chunk.reason).slice(0, 300) : null })
             n++
             if (chunk && typeof chunk.text === 'string') out.text += chunk.text
+            if (chunk && chunk.type === 'finish' && chunk.reason) { out.finishKind = chunk.reason.kind; if (chunk.reason.failure) out.failure = chunk.reason.failure }
             if (n > 200) break
           }
           out.chunkCount = n
@@ -804,7 +805,19 @@ export function apply(ctx, config = {}) {
     if (!force && _llmRoute && Date.now() - _llmRouteAt < 60000) return _llmRoute
     const llm = (typeof ctx.get === 'function' && ctx.get('llm')) || ctx.llm
     if (!llm || typeof llm.stream !== 'function') return null
-    // 显式配置优先（用户可在插件 config 里指定）
+    // ① 最优先：DSH 当前会话的默认模型（用户正在用的，必然可用；换模型/换账号自动跟随）
+    try {
+      const dm = (typeof ctx.get === 'function' && ctx.get('agentDefaultModel')) || ctx.agentDefaultModel
+      const sel = dm && typeof dm.currentSelection === 'function' ? dm.currentSelection() : null
+      const pid = sel && (sel.provider || (sel.model && sel.model.provider))
+      const mid = sel && (sel.model && (sel.model.id || sel.model)) || sel && sel.modelId
+      if (pid && mid && typeof llm.stream === 'function') {
+        _llmRoute = { llm, provider: pid, model: mid, source: 'session-default' }
+        _llmRouteAt = Date.now()
+        return _llmRoute
+      }
+    } catch (e) { /* 继续降级到配置/自动发现 */ }
+    // ② 显式配置（用户可在插件 config 里指定）
     if (config && config.jdProvider && config.jdModel) {
       _llmRoute = { llm, provider: config.jdProvider, model: config.jdModel, source: 'config' }
       _llmRouteAt = Date.now()
@@ -823,7 +836,12 @@ export function apply(ctx, config = {}) {
       if (!pid) continue
       let models = []
       try { models = (typeof llm.listModels === 'function') ? (await llm.listModels(pid) || []) : [] } catch (e) { models = [] }
-      for (const m of models.slice(0, 3)) {
+      // 模型排序：优先非 workbuddy（该网关额度易耗尽），其余按原序
+      const sorted = models.slice().sort((a, b) => {
+        const r = (x) => /workbuddy/i.test(String((x && x.id) || '')) ? 1 : 0
+        return r(a) - r(b)
+      })
+      for (const m of sorted.slice(0, 6)) {
         if (!m || !m.id) continue
         // 真调一次探测（极短 prompt，成本可忽略），确认该路由真的能出文本
         try {
