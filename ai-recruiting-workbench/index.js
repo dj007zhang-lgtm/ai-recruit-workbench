@@ -481,7 +481,7 @@ export function apply(ctx, config = {}) {
           out.used = { prov, model }
           let n = 0
           for await (const chunk of llm.stream({ provider: prov, model, temperature: 0, messages: [{ role: 'user', content: [{ type: 'text', text: '只回复两个字：你好' }] }] })) {
-            if (n < 6) out.chunks.push({ type: chunk && chunk.type, keys: chunk ? Object.keys(chunk) : null, text: chunk && typeof chunk.text === 'string' ? chunk.text.slice(0, 40) : null })
+            if (n < 8) out.chunks.push({ type: chunk && chunk.type, keys: chunk ? Object.keys(chunk) : null, text: chunk && typeof chunk.text === 'string' ? chunk.text.slice(0, 40) : null, reason: chunk && chunk.reason ? JSON.stringify(chunk.reason).slice(0, 300) : null })
             n++
             if (chunk && typeof chunk.text === 'string') out.text += chunk.text
             if (n > 200) break
@@ -489,6 +489,26 @@ export function apply(ctx, config = {}) {
           out.chunkCount = n
           out.usable = !!(out.text && out.text.trim())
           if (!out.usable) out.hint = 'LLM 无有效返回：检查网关额度/账号。AI 初筛将保持等待，不使用规则替代。'
+          // 逐个 provider 试（帮助定位哪条通道真正可用）
+          out.trials = []
+          for (const p of (Array.isArray(out.providers) ? out.providers : [])) {
+            const pid = p && (p.id || p.provider)
+            if (!pid) continue
+            const t = { provider: pid, models: [], ok: false, text: '', reason: null }
+            try {
+              const ms = await llm.listModels(pid)
+              t.models = (ms || []).map(x => x.id).slice(0, 3)
+              const mid = t.models[0]
+              if (mid) {
+                for await (const ch of llm.stream({ provider: pid, model: mid, temperature: 0, messages: [{ role: 'user', content: [{ type: 'text', text: '回复两字：可用' }] }] })) {
+                  if (ch && typeof ch.text === 'string') t.text += ch.text
+                  if (ch && ch.type === 'finish' && ch.reason && ch.reason.kind === 'error') t.reason = JSON.stringify(ch.reason.failure || {}).slice(0, 200)
+                }
+                t.ok = !!t.text.trim()
+              }
+            } catch (e) { t.reason = String(e && e.message || e).slice(0, 200) }
+            out.trials.push(t)
+          }
         }
       } catch (e) {
         out.errors.push('stream:' + String(e && e.message || e))
@@ -790,16 +810,30 @@ export function apply(ctx, config = {}) {
       _llmRouteAt = Date.now()
       return _llmRoute
     }
-    // 动态发现：遍历已注册 provider，找第一个有可用模型的
+    // 动态发现：遍历已注册 provider，逐个试真调用（空返回/异常则换下一条）
     let providers = []
     try { providers = (typeof llm.listProviders === 'function') ? (llm.listProviders() || []) : [] } catch (e) { providers = [] }
-    for (const p of providers) {
+    // 优先顺序：官方 > 其他（magpie 等第三方额度可能耗尽）
+    const order = providers.slice().sort((a, b) => {
+      const rank = (x) => { const id = String((x && (x.id || x.provider)) || ''); return /official/i.test(id) ? 0 : /magpie|workbuddy/i.test(id) ? 2 : 1 }
+      return rank(a) - rank(b)
+    })
+    for (const p of order) {
       const pid = p && (p.id || p.provider || p)
       if (!pid) continue
       let models = []
       try { models = (typeof llm.listModels === 'function') ? (await llm.listModels(pid) || []) : [] } catch (e) { models = [] }
-      const m = models.find(x => x && x.id) || null
-      if (m) { _llmRoute = { llm, provider: pid, model: m.id, source: 'auto' }; _llmRouteAt = Date.now(); return _llmRoute }
+      for (const m of models.slice(0, 3)) {
+        if (!m || !m.id) continue
+        // 真调一次探测（极短 prompt，成本可忽略），确认该路由真的能出文本
+        try {
+          let t = ''
+          for await (const ch of llm.stream({ provider: pid, model: m.id, temperature: 0, messages: [{ role: 'user', content: [{ type: 'text', text: 'ok' }] }] })) {
+            if (ch && typeof ch.text === 'string') t += ch.text
+          }
+          if (t.trim()) { _llmRoute = { llm, provider: pid, model: m.id, source: 'auto' }; _llmRouteAt = Date.now(); return _llmRoute }
+        } catch (e) { /* 换下一个 */ }
+      }
     }
     return null
   }
