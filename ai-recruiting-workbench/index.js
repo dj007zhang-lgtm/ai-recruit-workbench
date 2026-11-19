@@ -498,22 +498,89 @@ export function apply(ctx, config = {}) {
           return isOldRule && ['已淘汰', '人才库'].indexOf(c.stage) < 0
         })
         if (dryRun) return replyJson(res, 200, { ok: true, dryRun: true, total: targets.length, candidates: targets.map(c => ({ id: c.id, name: c.name, stage: c.stage, engine: (c.deep && c.deep.engine) || 'rule', route: c.route })) })
+        // 并行评估：并发池（默认 4，可用 config.assessConcurrency 调整）
+        // 存在理由：每份 BARS 评估要 3 次 LLM 采样约 60-100 秒，串行 12 人需 15 分钟；并发 4 可压到 4-5 分钟。
+        // 上限保守：LLM 网关有速率限制，过高并发会触发限流反而更慢。
+        const CONC = Math.max(1, Math.min(8, Number((config && config.assessConcurrency) || 4)))
         const results = []
         const progFile = join(d, 'reevaluate.progress.json')
-        const writeProg = (o) => { try { writeFileSync(progFile, JSON.stringify(o)) } catch (e) {} }
-        writeProg({ running: true, total: targets.length, done: 0, current: '', startedAt: new Date().toISOString(), results: [] })
-        for (let ti = 0; ti < targets.length; ti++) {
-          const c = targets[ti]
-          writeProg({ running: true, total: targets.length, done: ti, current: c.name || c.id, startedAt: new Date().toISOString(), results: results.slice() })
-          try {
-            const r = await assessCandidate(d, c.id)
-            results.push({ id: c.id, name: c.name, ok: !!r.ok, engine: r.engine, route: r.route, to: r.to || null, message: r.message || '', grade: r.diag && r.diag.grade, score: r.diag && r.diag.score })
-          } catch (e) { results.push({ id: c.id, name: c.name, ok: false, error: String(e && e.message || e) }) }
-          writeProg({ running: true, total: targets.length, done: ti + 1, current: '', startedAt: new Date().toISOString(), results: results.slice() })
+        const startedAt = new Date().toISOString()
+        const writeProg = (o) => { try { writeFileSync(progFile, JSON.stringify({ startedAt, ...o })) } catch (e) {} }
+        writeProg({ running: true, total: targets.length, done: 0, current: '', concurrency: CONC, results: [] })
+        let cursor = 0
+        const worker = async () => {
+          while (true) {
+            const ti = cursor++
+            if (ti >= targets.length) return
+            const c = targets[ti]
+            writeProg({ running: true, total: targets.length, done: results.length, current: (c.name || c.id) + '（' + results.length + '/' + targets.length + '）', concurrency: CONC, results: results.slice() })
+            try {
+              const r = await assessCandidate(d, c.id)
+              results.push({ id: c.id, name: c.name, ok: !!r.ok, engine: r.engine, route: r.route, to: r.to || null, message: r.message || '', grade: r.diag && r.diag.grade, score: r.diag && r.diag.score })
+            } catch (e) { results.push({ id: c.id, name: c.name, ok: false, error: String(e && e.message || e) }) }
+            writeProg({ running: true, total: targets.length, done: results.length, current: '', concurrency: CONC, results: results.slice() })
+          }
         }
+        await Promise.all(Array.from({ length: Math.min(CONC, targets.length) }, () => worker()))
         const done = results.filter(x => x.ok).length
-        writeProg({ running: false, total: targets.length, done, failed: targets.length - done, finishedAt: new Date().toISOString(), results })
+        writeProg({ running: false, total: targets.length, done, failed: targets.length - done, concurrency: CONC, finishedAt: new Date().toISOString(), results })
         replyJson(res, 200, { ok: true, total: targets.length, done, failed: targets.length - done, results })
+      } catch (e) { replyJson(res, 500, { ok: false, error: String(e && e.message || e) }) }
+    },
+  }))
+  dispose.push(ctx.webServer.register({
+    kind: 'exact', path: '/api/ai-recruiting/gen-doc',
+    handler: async (req, res) => {
+      // 生成交付物（Offer 函 / 面试评估表 / 候选人报告）：数据全部来自账本，不臆造。
+      try {
+        const a = await readPost(req, res, 64 * 1024)
+        if (a === null) return
+        const kind = String(a.kind || 'report')
+        const d = dataDir(); ensure(d); migrateLegacy(d)
+        const s = fold(d)
+        const c = s.byId[String(a.candidateId || '')]
+        if (!c) return replyJson(res, 400, { ok: false, error: '候选人不存在' })
+        const p = s.positions.find(x => x.id === c.pid) || {}
+        const sc = (p.scorecard && p.scorecard.softDims) || []
+        const ai = c.deep || {}
+        const data = { name: c.name || '', position: p.title || '', dept: p.dept || '', city: p.city || '', source: c.source || '', stage: c.stage || '' }
+        if (kind === 'offer') {
+          data.company = String(a.company || '')
+          data.salary = String(a.salary || (c.offer && c.offer.salary) || '')
+          data.startDate = String(a.startDate || (c.offer && c.offer.startDate) || '')
+          data.replyBy = String(a.replyBy || '')
+          data.probation = String(a.probation || '')
+          data.reportTo = String(a.reportTo || '')
+          data.salaryStructure = String(a.salaryStructure || '')
+          data.issueDate = new Date().toLocaleDateString('zh-CN')
+        } else if (kind === 'eval') {
+          const tasks = (function () { try { return buildVerifyTasks(c, p) } catch (e) { return [] } })()
+          const lvOf = (name) => { const t = (ai.alignment || []).find(x => x.dim === name); return t ? t.level : '' }
+          data.round = String(a.round || '初试')
+          data.at = String(a.at || '')
+          data.interviewer = String(a.interviewer || '')
+          data.ai = { grade: ai.grade || '', score: c.weighted != null ? c.weighted : '', route: c.route || '' }
+          data.dims = sc.map(x => ({ name: x.name, anchor: (x.levels || []).map(l => l.level + '=' + l.anchor).join('；'), aiLevel: lvOf(x.name) }))
+          data.starTasks = tasks.filter(t => t.star).slice(0, 6)
+        } else {
+          data.receivedAt = (function () { try { return new Date(c.seqs && c.seqs.length ? c.receivedTs || Date.now() : Date.now()).toLocaleString('zh-CN') } catch (e) { return '' } })()
+          data.ai = { grade: ai.grade || '', score: c.weighted != null ? c.weighted : '', conf: c.conf != null ? c.conf : '', route: c.route || '', conclusion: ai.conclusion || '' }
+          data.alignment = (ai.alignment || []).map(x => ({ dim: x.dim, level: x.level, requirement: x.requirement || '', candidate: x.candidate || '' }))
+          data.gates = (c.gateResults || []).map(g => ({ gate: g.gate, verdict: g.verdict, reason: g.reason }))
+          data.doubts = c.doubts || []
+        }
+        // 输出目录：<dataDir>/exports（不污染账本）
+        const outDir = join(d, 'exports'); ensure(outDir)
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+        const fname = ({ offer: 'Offer函', eval: '面试评估表', report: '候选人评估报告' })[kind] || '文档'
+        const outPath = join(outDir, fname + '_' + (c.name || c.id) + '_' + stamp + '.docx')
+        const PY = process.env.RECRUIT_PYTHON || '/Users/andyzhang/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/python/bin/python3'
+        const script = fileURLToPath(new URL('./gen_docs.py', import.meta.url))
+        const r = spawnSync(PY, [script], { input: JSON.stringify({ kind, out: outPath, data }), encoding: 'utf8', timeout: 60000, maxBuffer: 8 * 1024 * 1024 })
+        let j = null
+        try { j = JSON.parse(String((r && r.stdout) || '{}')) } catch (e) { j = { ok: false, error: String((r && r.stderr) || '').slice(0, 300) } }
+        if (!j || !j.ok) return replyJson(res, 500, { ok: false, error: (j && j.error) || '生成失败', raw: String((r && r.stderr) || '').slice(0, 300) })
+        replyJson(res, 200, { ok: true, path: outPath, filename: outPath.split('/').pop(), kind })
       } catch (e) { replyJson(res, 500, { ok: false, error: String(e && e.message || e) }) }
     },
   }))
@@ -1194,6 +1261,28 @@ export function apply(ctx, config = {}) {
 
   // ===== 评估 → 面试验证任务：把 BARS 评估结果转成「面试要验证什么」的结构化任务清单 =====
   // 这是"评估与面试一体"的核心：面试不是自由发挥，而是逐条承接评估的疑点/缺口/待核门槛。
+  // STAR 追问骨架：按档位生成差异化四段问题（S情境/T任务/A行动/R结果）
+  // 存在理由：简历可包装，"具体情境+个人行动+可核实数字"难以编造；A 段区分"我们做了"与"我做了"是识别真实贡献的关键。
+  function starProbe(dim, level, evidence) {
+    const lv = level || 'L0'
+    const base = {
+      S: '这件事的背景下——系统规模多大、团队几人、你当时是什么角色？',
+      T: '你个人负责哪部分？当时定的目标指标是什么（要数字）？',
+      A: '具体你怎么做的？关键技术决策是什么，为什么这么选？',
+      R: '最终结果如何？有可核实数字吗？你怎么确认这是你的贡献？',
+    }
+    if (lv === 'L0' || lv === 'L1') {
+      // 证据不足/偏低：从零建立事实，A 段必须问"个人做了什么"
+      return { S: base.S, T: base.T, A: '这个项目里你个人具体动手做了什么？（不说团队，只说你自己负责的模块/代码/决策）', R: base.R }
+    }
+    if (lv === 'L2') {
+      // 中等：重点验证深度，是否独立扛过复杂问题
+      return { S: base.S, T: base.T, A: '遇到的最难的技术问题是什么？你怎么定位、怎么解决的？有没有走过弯路？', R: base.R }
+    }
+    // L3：轻验证，只防夸大——问归因
+    return { S: base.S, T: base.T, A: '这个方案是你主导设计的吗？和团队其他人怎么分工？', R: '效果数字是实测还是估算？有监控数据佐证吗？' }
+  }
+
   function buildVerifyTasks(c, pos) {
     const tasks = []
     const al = (c.deep && c.deep.alignment) || []
@@ -1203,9 +1292,12 @@ export function apply(ctx, config = {}) {
       const insufficient = !cand || cand === '无' || cand.length < 8
       // 判 L0/L1 或证据单薄 → 该维度是面试重点验证项
       if (insufficient || ['L0', 'L1'].indexOf(lv) >= 0) {
-        tasks.push({ dim: a.dim, aiLevel: lv, target: '验证是否真的具备（AI 判' + (lv || '缺') + '，证据不足/偏低）', why: insufficient ? '简历无充分证据支撑' : 'AI 判该维偏低，需当面确认是否属实/可培养', evidence: cand.slice(0, 80) })
+        tasks.push({ dim: a.dim, aiLevel: lv, star: starProbe(a.dim, lv, cand), target: '验证是否真的具备（AI 判' + (lv || '缺') + '，证据不足/偏低）', why: insufficient ? '简历无充分证据支撑' : 'AI 判该维偏低，需当面确认是否属实/可培养', evidence: cand.slice(0, 80) })
       } else if (lv === 'L2') {
-        tasks.push({ dim: a.dim, aiLevel: lv, target: '验证深度（AI 判 L2 中等，需确认能否独立扛复杂问题）', why: 'AI 判中等，避免"会用"被误当"精通"', evidence: cand.slice(0, 80) })
+        tasks.push({ dim: a.dim, aiLevel: lv, star: starProbe(a.dim, lv, cand), target: '验证深度（AI 判 L2 中等，需确认能否独立扛复杂问题）', why: 'AI 判中等，避免"会用"被误当"精通"', evidence: cand.slice(0, 80) })
+      } else if (lv === 'L3') {
+        // L3 也要轻验证：防简历夸大（原逻辑完全跳过，是漏洞）
+        tasks.push({ dim: a.dim, aiLevel: lv, star: starProbe(a.dim, lv, cand), target: '防夸大（AI 判 L3 突出，需核实归因与真实性）', why: '高分档最值得防包装：数字是否实测、是否个人主导', evidence: cand.slice(0, 80) })
       }
       // L3 高判档：轻验证即可（防止简历夸大），不列为主线
     }
@@ -1575,7 +1667,8 @@ export function apply(ctx, config = {}) {
           '2) questions 总数 4-7 条，dim 字段必须对应任务清单里的维度名；',
           '3) mustVerify 3-5 条：从任务清单提炼最关键的当面验证点；',
           '4) redFlags 1-3 条：真正的造假/能力不符风险（不是正常求职节奏）；',
-          '5) 每个问题 why 写清"这条对应哪个验证任务、想验证什么"。',
+          '5) 每个问题 why 写清"这条对应哪个验证任务、想验证什么"；',
+          '6) 提问方式遵循 STAR/BEI：只问"请讲一个具体例子"，禁止问"你擅长X吗"这类引导性问题；候选人给概括回答时必须追问到具体数字与个人行动。',
           '只输出 JSON：{"mustVerify":[""],"questions":[{"dim":"","q":"","why":""}],"redFlags":[""]}',
         ].join('\n')
         let out = ''
@@ -1583,7 +1676,10 @@ export function apply(ctx, config = {}) {
         let parsed = null
         try { const j2 = extractJson(out); if (j2) parsed = j2 } catch (e) {}
         if (!parsed) { replyJson(res, 200, { ok: false, reason: '生成失败', raw: String(out).slice(0, 300) }); return }
-        replyJson(res, 200, { ok: true, prep: parsed, basedOn: { rule: 'interview-copilot-v1' } })
+        // 附带 STAR 取证骨架：直接来自 buildVerifyTasks（与 AI 评估的验证任务同源，不另起炉灶）
+        let starTasks = []
+        try { starTasks = buildVerifyTasks(c, p2).filter(t => t.star).slice(0, 6) } catch (e) {}
+        replyJson(res, 200, { ok: true, prep: { ...parsed, starTasks }, basedOn: { rule: 'interview-copilot-v2-star' } })
       } catch (e) { replyJson(res, 400, { error: String((e && e.message) || e) }) }
     },
   }))
@@ -1614,14 +1710,21 @@ export function apply(ctx, config = {}) {
           try { spawnSync('afconvert', ['-f', 'WAVE', '-d', 'LEI16', src, wav], { timeout: 60000 }) } catch (e) {}
           if (existsSync(wav)) target = wav
         }
-        const r = spawnSync(STT, [target], { encoding: 'utf8', timeout: 120000, maxBuffer: 4 * 1024 * 1024 })
+        // 新版 STT 支持 --json：返回文本 + 置信度 + 分段数 + 时长（面试场景可据此判断录音质量）
+        const r = spawnSync(STT, [target, '--json'], { encoding: 'utf8', timeout: 300000, maxBuffer: 8 * 1024 * 1024 })
         const out = String((r && r.stdout) || '').trim()
         try { unlinkSync(target); if (target !== src) try { unlinkSync(src) } catch (e) {} else unlinkSync(src) } catch (e) {}
-        const lines = out.split('\n')
-        const diag = lines.filter(l => l.indexOf('onDevice=') === 0 || l.indexOf('ERR:') === 0)
-        const text = lines.filter(l => l.indexOf('onDevice=') !== 0 && l.indexOf('ERR:') !== 0).join(' ').trim()
-        if (!text) { replyJson(res, 200, { ok: false, reason: diag.join(' ') || 'no-speech-recognized' }); return }
-        replyJson(res, 200, { ok: true, text, diag: diag.join(' ') })
+        let parsed = null
+        try { parsed = JSON.parse(out.split('\n').filter(l => l.trim().startsWith('{')).pop() || '{}') } catch (e) { parsed = null }
+        if (!parsed) {
+          // 兼容旧格式（纯文本输出）
+          const lines = out.split('\n')
+          const text = lines.filter(l => l.indexOf('onDevice=') !== 0 && l.indexOf('ERR:') !== 0).join(' ').trim()
+          if (!text) { replyJson(res, 200, { ok: false, reason: out.slice(0, 200) || 'no-speech-recognized' }); return }
+          replyJson(res, 200, { ok: true, text, confidence: null }); return
+        }
+        if (!parsed.ok || !parsed.text) { replyJson(res, 200, { ok: false, reason: parsed.error || 'no-speech-recognized', confidence: parsed.confidence || 0, durationSec: parsed.durationSec || 0 }); return }
+        replyJson(res, 200, { ok: true, text: parsed.text, confidence: parsed.confidence, durationSec: parsed.durationSec, chunks: parsed.chunks, onDevice: parsed.onDevice })
       } catch (e) { replyJson(res, 400, { error: String((e && e.message) || e) }) }
     },
   }))
@@ -1649,6 +1752,19 @@ export function apply(ctx, config = {}) {
       '3. 严禁脑补：候选人没答出来的，档位按证据不足处理（L0/L1），evidence 写「候选人未提供有效证据」。',
       '4. ' + (flags || '无已知简历疑点。'),
       '5. 每个维度至少一问一答后（已覆盖：' + (covered.join('、') || '尚无') + '），才可输出最终结论。',
+      '',
+      '# 追问方法论（STAR 四段 + BEI 行为事件）',
+      '简历可以包装，但"具体情境下的具体行动"难以编造。对每个维度，按 STAR 四段逐步取证：',
+      '- S 情境：这件事发生在什么背景下？系统多大、团队几人、你的角色是什么？',
+      '- T 任务：你具体负责哪部分？目标指标是什么（数字）？',
+      '- A 行动：你个人做了什么？（关键：区分"我们做了"与"我做了"，团队成果不算个人能力）',
+      '- R 结果：最终结果如何？有可核实的数字吗？你怎么归因到自己的贡献？',
+      '',
+      'BEI（行为事件访谈）铁律：',
+      '- 只问「请讲一个具体例子」，不问「你擅长X吗」（引导性提问必然得到肯定回答，零信息量）。',
+      '- 候选人给概括性回答（"我负责优化性能"）时，必须追问到具体：「具体优化了哪一段？从多少到多少？你怎么定位瓶颈的？」',
+      '- 候选人说"我们团队"时，必须追问「你个人负责哪部分？」——这是识别真实贡献 vs 搭便车的核心。',
+      '- 至少拿到 1 个带数字的结果（R）才算该维度证据充分；拿不到就判证据不足。',
       '',
       '# 评分卡维度与锚点',
       anchors || '（无评分卡）',

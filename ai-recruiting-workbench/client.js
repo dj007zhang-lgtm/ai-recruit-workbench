@@ -794,8 +794,15 @@ window.__ModuleLoader__.load({
             try {
               const b64 = String(rd.result || '').split(',')[1] || ''
               const j = await api('/api/ai-recruiting/stt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename: file.name, contentBase64: b64 }) })
-              if (j && j.ok && j.text) setNotes(v => (v ? v + '\n' : '') + j.text)
-              else setErr('转写失败：' + ((j && j.reason) || '未识别'))
+              if (j && j.ok && j.text) {
+                setNotes(v => (v ? v + '\n' : '') + j.text)
+                // 转写质量提示：置信度低说明录音质量差/口音重，提示人工校对（面试结论不能建立在错字上）
+                const conf = j.confidence != null ? j.confidence : null
+                const dur = j.durationSec ? Math.round(j.durationSec) + 's' : ''
+                const ch = j.chunks > 1 ? (j.chunks + ' 段') : ''
+                if (conf != null && conf < 0.5) setErr('⚠ 转写置信度低（' + Math.round(conf * 100) + '%' + (dur ? ' · ' + dur : '') + (ch ? ' · ' + ch : '') + '），请人工校对后再用于面评')
+                else if (conf != null) setErr('')
+              } else setErr('转写失败：' + ((j && j.reason) || '未识别'))
             } catch (e) { setErr('转写失败：' + String(e.message || e)) }
           }
           rd.readAsDataURL(file)
@@ -860,6 +867,21 @@ window.__ModuleLoader__.load({
           (prep.mustVerify || []).length ? h('div', { style: { marginBottom: 8 } },
             sec('① 必须当面验证', C.bad),
             ...prep.mustVerify.map((x, i) => h('div', { key: i, style: { fontSize: 11.5, padding: '3px 0', lineHeight: 1.5 } }, '· ' + x))) : null,
+          // STAR 四段追问：每个待验证维度给结构化取证骨架（S情境→T任务→A行动→R结果）
+          (prep.starTasks || []).length ? h('div', { style: { marginBottom: 8 } },
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 } },
+              sec('①b STAR 取证追问', C.info),
+              h('span', { style: { fontSize: 10, color: C.muted } }, '按情境→任务→行动→结果逐步问，拿不到数字即判证据不足')),
+            ...prep.starTasks.map((t, i) => h('details', { key: i, style: { background: C.surface, borderRadius: 8, padding: '6px 9px', marginBottom: 4 } },
+              h('summary', { style: { fontSize: 11.5, cursor: 'pointer', fontWeight: 600 } },
+                t.dim + ' · AI判' + (t.aiLevel || '缺') + (t.evidence ? '' : ' · 简历无证据')),
+              t.evidence ? h('div', { style: { fontSize: 10, color: C.muted, marginTop: 3, paddingLeft: 2 } }, '简历原文：' + t.evidence) : null,
+              h('div', { style: { marginTop: 5, display: 'flex', flexDirection: 'column', gap: 3 } },
+                ...[['S', '情境'], ['T', '任务'], ['A', '行动'], ['R', '结果']].map(([k, lb]) =>
+                  h('div', { key: k, style: { fontSize: 11, lineHeight: 1.5 } },
+                    h('span', { style: { fontSize: 9.5, fontWeight: 700, color: '#fff', background: k === 'A' ? C.bad : C.accent, borderRadius: 4, padding: '0 4px', marginRight: 5 } }, k),
+                    h('span', { style: { color: C.muted, marginRight: 3 } }, lb + '：'),
+                    h('span', null, (t.star && t.star[k]) || ''))))))) : null,
           (prep.questions || []).length ? h('div', { style: { marginBottom: 8 } },
             sec('② 建议追问', C.accent),
             ...prep.questions.map((q, i) => h('div', { key: i, style: { background: C.surface, borderRadius: 8, padding: '6px 9px', marginBottom: 4 } },
@@ -1132,6 +1154,7 @@ window.__ModuleLoader__.load({
       const [binding, setBinding] = React.useState(false)
       const [bindPid, setBindPid] = React.useState('')
       const [why, setWhy] = React.useState(false)
+      const [docBusy, setDocBusy] = React.useState(null)
       const dims = Object.keys(c.scores || {})
       const run = async (body) => {
         try { const j = await postAction(body); setToast(j.message || '完成'); setPanel(null); onAction(j); return j }
@@ -1160,6 +1183,19 @@ window.__ModuleLoader__.load({
           const url = window.location.origin + '/api/ai-recruiting/interview?token=' + encodeURIComponent(c.lastInvite.token)
           try { navigator.clipboard.writeText(url); setToast('已复制面试官链接，可直接发给面试官') } catch (e) { setToast('链接：' + url) }
         } }, '🔗 面试官链接') : null,
+        // 交付物导出：Offer 函 / 面试评估表 / 候选人报告（数据全部来自账本，不臆造）
+        h('div', { style: { display: 'flex', gap: 4, alignItems: 'center' } },
+          h('span', { style: { fontSize: 10.5, color: C.muted } }, '导出'),
+          ...[['eval', '评估表'], ['report', '评估报告'], ['offer', 'Offer 函']].map(([k, lb]) =>
+            h('button', { key: k, type: 'button', style: { ...btn, padding: '1px 7px', fontSize: 10.5 }, disabled: !!docBusy, onClick: async () => {
+              setDocBusy(k)
+              try {
+                const j = await api('/api/ai-recruiting/gen-doc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: k, candidateId: c.id }) })
+                if (j && j.ok) setToast('已生成：' + j.filename + '（存于数据目录 exports/）')
+                else setToast('生成失败：' + ((j && j.error) || '未知'))
+              } catch (e) { setToast('生成失败：' + String(e.message || e)) }
+              finally { setDocBusy(null) }
+            } }, docBusy === k ? '…' : lb))),
         (() => {
           const m = c.mail || {}
           const viaMail = m.from || m.subject
