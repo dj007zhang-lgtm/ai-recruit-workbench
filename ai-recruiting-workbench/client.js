@@ -1300,21 +1300,14 @@ window.__ModuleLoader__.load({
         const GRADE_HINT = { S: { t: '强烈推荐', c: C.good }, A: { t: '推荐', c: C.good }, B: { t: '需面试排雷', c: C.warn }, C: { t: '不建议推进', c: C.bad } }
         const gh = GRADE_HINT[grade] || { t: '', c: C.muted }
         const und = c.undetermined || []
-        const isInsufficient = und.length > 0 || /待补充|缺.*证据|未判定|证据不足/.test(c.route || '')
-        const nextAction = (function () {
-          if (isInsufficient) return '简历缺「' + (und.join('、') || '关键维度') + '」的可引用证据 → 向候选人索取该维度的具体经历/量化结果，或安排面试当面核实'
-          if (grade === 'S' || grade === 'A') return '进入初试：发初试邀约'
-          if (grade === 'C') return '建议淘汰并存入人才库（后续可激活复捞）'
-          if (grade === 'B') return '安排面试重点排雷（' + (c.doubts && c.doubts[0] ? '先核实：' + c.doubts[0] : '仍需当面验证') + '）'
-          return c.action || ''
-        })()
+        // 缺证据时说明缺哪几个维度（有价值）；行动指引已由下方「流程动作」按钮承载，不重复
         out.push(h(Block, { title: 'AI 建议' },
           h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 } },
             grade ? h('span', { style: { fontSize: 13, fontWeight: 800, color: '#fff', background: gh.c, borderRadius: 8, padding: '2px 12px' } }, grade + ' 级') : null,
             h('div', { style: { flex: 1 } },
               h('div', { style: { fontSize: 13, fontWeight: 700, color: gh.c } }, gh.t || (c.route || '未评估')),
               detail.rank ? h('div', { style: { fontSize: 11.5, color: C.muted, marginTop: 1 } }, '本批同岗位第 ' + detail.rank.pos + '/' + detail.rank.total + ' 名（前 ' + detail.rank.pct + '%）') : null)),
-          nextAction ? h('div', { style: { fontSize: 12.5, marginBottom: 6, padding: '8px 11px', background: isInsufficient ? tint(C.warn,.12) : tint(C.accent,.07), borderRadius: 8, border: '1px solid ' + (isInsufficient ? tint(C.warn,.4) : 'transparent'), color: isInsufficient ? C.warn : 'inherit' } }, h('b', null, isInsufficient ? '⚠ 需你复核（缺证据） ' : '下一步 '), nextAction) : null,
+          // 「下一步 xxx」与下方流程动作按钮重复、「缺证据」与下方判定依据重复 —— 均已删，此处不再重复提示
           h('div', { style: { background: C.surface, borderRadius: 8, padding: '9px 11px', marginBottom: 6 } },
             (function () {
               const ev = c.evidence || {}
