@@ -225,7 +225,7 @@ window.__ModuleLoader__.load({
         ...stages.map((st, i) => {
           const conv = i > 0 && stages[i - 1].value > 0 ? Math.round((st.value / stages[i - 1].value) * 100) + '%' : null
           const hue = ['#4f7cff', '#22d3ee', '#34d399', '#a78bfa', '#f0ad4e', '#f472b6'][i % 6]
-          return h('div', { key: i, style: { display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 } },
+          return h('div', { key: i, style: { display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, opacity: (st.value||0) > 0 ? 1 : .45 } },
             h('div', { style: { flex: 1, background: 'linear-gradient(180deg,' + tint(hue, .16) + ',' + tint(hue, .04) + ')', border: '1px solid ' + tint(hue, .3), borderTop: '3px solid ' + hue, borderRadius: 10, padding: '9px 6px', textAlign: 'center', minWidth: 0 } },
               h('div', { style: { fontSize: 10, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, st.label),
               h('div', { style: { fontSize: 21, fontWeight: 800, marginTop: 3 } }, String(st.value || 0))),
@@ -2026,7 +2026,7 @@ window.__ModuleLoader__.load({
           x.label + ' ' + x.value + (x.unit || '')))))
       // 6 环节累计管道 + 转化箭头流
       // ===== 数据大屏：图表矩阵 =====
-      const pl = (dash.pipeline || []).filter(p => (p.count || 0) > 0)
+      const pl = (dash.pipeline || []).slice(0, 6)   // 漏斗全环节：0 是真实状态（尚无人到达），砍掉反而看不出断在哪
       const gdViz = (dash.aiPerf || {}).gradeDist || {}
       // ① 招聘漏斗（渐变）——占整行
       if (pl.length >= 2) out.push(h('div', { style: { ...card, marginBottom: 12, padding: '14px 16px' } },
@@ -2039,7 +2039,6 @@ window.__ModuleLoader__.load({
           ' · 进面试均 ' + ((dash.cycle || {}).toInterviewAvgDays != null ? dash.cycle.toInterviewAvgDays + ' 天' : '—'))))
       // ② 三个图表并排：SABC环形 + 渠道条形 + 14天趋势
       const srcF = dash.sourceFunnel || []
-      const trendArr = (data.trend || []).map(t => t.candidates)
       const chartCard = (title, sub, body) => h('div', { style: { ...card, padding: '14px 16px', minWidth: 0 } },
         h('div', { style: { fontSize: 12.5, fontWeight: 700, marginBottom: 10 } }, title, sub ? h('span', { style: { fontSize: 10, color: C.muted, marginLeft: 6, fontWeight: 400 } }, sub) : null), body)
       const gTotalViz = (gdViz.S || 0) + (gdViz.A || 0) + (gdViz.B || 0) + (gdViz.C || 0)
@@ -2051,38 +2050,41 @@ window.__ModuleLoader__.load({
             h('span', { style: { color: C.muted } }, lv + ' 级'), h('b', { style: { marginLeft: 'auto' } }, String(n)), h('span', { style: { color: C.muted, fontSize: 10 } }, gTotalViz ? Math.round(n / gTotalViz * 100) + '%' : ''))))))
         : null
       const srcBar = srcF.length ? chartCard('渠道转化', '简历→面试', h(BarList, { items: srcF.map(x => ({ label: x.source, value: x.total, color: C.accent })), labelW: 60 })) : null
-      const trendChart = trendArr.length ? chartCard('近 14 天候选人', '', h('div', null,
-        h(Sparkline, { values: trendArr, width: 200, height: 46, color: '#4f7cff' }),
-        h('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: C.muted, marginTop: 4 } }, h('span', null, '14天前'), h('span', null, '今天')))) : null
-      const trio = [donut, srcBar, trendChart].filter(Boolean)
+      // 近14天趋势：累计曲线无决策价值，已移除；metrics 积累≥7天后可上「每日新增」流量版
+      const trio = [donut, srcBar].filter(Boolean)
       if (trio.length) out.push(h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 12, marginBottom: 12 } }, ...trio))
-      // 职位招聘进度（招到没有？还差多少？）
+      // 职位招聘进度 · 岗位漏斗矩阵（简历→评估→面试→Offer→入职 + 需求缺口 + 周期）
       const hiringRows = dash.hiring || []
-      if (hiringRows.length) out.push(h('div', { style: { ...card, marginBottom: 10, padding: '12px 14px' } },
-        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 } },
-          h('div', { style: { fontSize: 12.5, fontWeight: 700 } }, '▍职位招聘进度'),
-          h('span', { style: { fontSize: 11.5, color: C.muted } }, '需求 · 已入职 · 在途 · 缺口')),
-        h('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 11.5 } },
-          h('thead', null, h('tr', null,
-            h('th', { style: { textAlign: 'left', fontSize: 11.5, color: C.muted, fontWeight: 600, padding: '3px 4px' } }, '岗位'),
-            h('th', { style: { textAlign: 'right', fontSize: 11.5, color: C.muted, fontWeight: 600, padding: '3px 4px', width: 44 } }, '需求'),
-            h('th', { style: { textAlign: 'right', fontSize: 11.5, color: C.muted, fontWeight: 600, padding: '3px 4px', width: 44 } }, '已入职'),
-            h('th', { style: { textAlign: 'right', fontSize: 11.5, color: C.muted, fontWeight: 600, padding: '3px 4px', width: 44 } }, '在途'),
-            h('th', { style: { textAlign: 'left', fontSize: 11.5, color: C.muted, fontWeight: 600, padding: '3px 4px', width: 160 } }, '在途分布'),
-            h('th', { style: { textAlign: 'right', fontSize: 11.5, color: C.muted, fontWeight: 600, padding: '3px 4px', width: 44 } }, '缺口'),
-            h('th', { style: { textAlign: 'right', fontSize: 11.5, color: C.muted, fontWeight: 600, padding: '3px 4px', width: 56 } }, '均到岗'))),
-          h('tbody', null, ...hiringRows.map(x => h('tr', { key: x.id, style: { borderTop: '1px solid ' + C.border } },
-            h('td', { style: { padding: '5px 4px' } },
-              h('b', { style: { fontSize: 11.5 } }, x.title),
-              h('div', { style: { height: 4, background: C.surface, borderRadius: 3, marginTop: 3, overflow: 'hidden' } },
-                h('div', { style: { width: x.progress + '%', height: '100%', background: x.progress >= 100 ? C.good : C.accent } }))),
-            h('td', { style: { textAlign: 'right', padding: '5px 4px' } }, String(x.hc)),
-            h('td', { style: { textAlign: 'right', padding: '5px 4px', fontWeight: 700, color: x.hired ? C.good : C.muted } }, String(x.hired)),
-            h('td', { style: { textAlign: 'right', padding: '5px 4px', color: x.inFlow ? C.accent : C.muted } }, String(x.inFlow)),
-            h('td', { style: { padding: '5px 4px', fontSize: 11.5, color: C.muted } }, Object.keys(x.stageDist).length ? Object.keys(x.stageDist).map(k2 => k2 + ' ' + x.stageDist[k2]).join(' · ') : '—'),
-            h('td', { style: { textAlign: 'right', padding: '5px 4px', fontWeight: 800, color: x.gap ? C.bad : C.good } }, String(x.gap)),
-            h('td', { style: { textAlign: 'right', padding: '5px 4px', fontSize: 11.5, color: C.muted } }, x.avgDays != null ? x.avgDays + 'd' : '—')))))
-        ))
+      if (hiringRows.length) out.push(h('div', { style: { ...card, marginBottom: 10, padding: '13px 16px' } },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 } },
+          h('div', { style: { fontSize: 12.5, fontWeight: 700 } }, '▍岗位招聘漏斗'),
+          h('span', { style: { fontSize: 10.5, color: C.muted } }, '每岗位 · 简历 → 评估 → 面试 → Offer → 入职')),
+        h('div', { style: { overflowX: 'auto' } },
+          h('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 11.5 } },
+            h('thead', null, h('tr', null,
+              h('th', { style: { textAlign: 'left', fontSize: 10.5, color: C.muted, fontWeight: 600, padding: '3px 4px', whiteSpace: 'nowrap' } }, '岗位'),
+              ...['简历', '评估', '面试', 'Offer', '入职'].map(h2 => h('th', { key: h2, style: { textAlign: 'center', fontSize: 10.5, color: C.muted, fontWeight: 600, padding: '3px 6px', whiteSpace: 'nowrap' } }, h2)),
+              h('th', { style: { textAlign: 'center', fontSize: 10.5, color: C.muted, fontWeight: 600, padding: '3px 6px' } }, '需求'),
+              h('th', { style: { textAlign: 'center', fontSize: 10.5, color: C.muted, fontWeight: 600, padding: '3px 6px' } }, '缺口'),
+              h('th', { style: { textAlign: 'center', fontSize: 10.5, color: C.muted, fontWeight: 600, padding: '3px 6px', whiteSpace: 'nowrap' } }, '周期'))),
+            h('tbody', null, ...hiringRows.map(x => {
+              const fn = x.funnel || {}
+              const CELLS = [['简历', fn.resume, C.text], ['评估', fn.screened, C.accent], ['面试', fn.interview, C.info], ['Offer', fn.offer, C.purple], ['入职', fn.hired, C.good]]
+              return h('tr', { key: x.id, style: { borderTop: '1px solid ' + C.border } },
+                h('td', { style: { padding: '6px 4px', whiteSpace: 'nowrap' } },
+                  h('b', { style: { fontSize: 11.5 } }, x.title),
+                  h('div', { style: { height: 3, background: C.surface, borderRadius: 2, marginTop: 3, overflow: 'hidden', maxWidth: 160 } },
+                    h('div', { style: { width: x.progress + '%', height: '100%', background: x.progress >= 100 ? C.good : C.accent } }))),
+                ...CELLS.map(([lb, v, c]) => h('td', { key: lb, style: { textAlign: 'center', padding: '6px 6px', fontWeight: v > 0 ? 700 : 400, color: v > 0 ? c : C.muted, fontVariantNumeric: 'tabular-nums' } }, String(v == null ? '—' : v))),
+                h('td', { style: { textAlign: 'center', padding: '6px 6px' } }, String(x.hc)),
+                h('td', { style: { textAlign: 'center', padding: '6px 6px', fontWeight: 800, color: x.gap ? C.bad : C.good } }, String(x.gap)),
+                h('td', { style: { textAlign: 'center', padding: '6px 6px', fontSize: 10.5, whiteSpace: 'nowrap' } },
+                  x.avgDays != null ? h('span', { style: { color: C.good } }, '到岗 ' + x.avgDays + ' 天')
+                  : x.inflowAvgDays != null ? h('span', { style: { color: C.warn } }, '在途 ' + x.inflowAvgDays + ' 天')
+                  : h('span', { style: { color: C.muted } }, '—')) )
+          })),
+        h('div', { style: { fontSize: 10, color: C.muted, marginTop: 8 } },
+          '周期：已入职岗位显示平均到岗天数；在途岗位显示在途者平均停留天数')))))
       // AI 初筛分布（S/A/B/C）+ 改判率
       const aiP = dash.aiPerf || {}
       const gd = aiP.gradeDist || {}

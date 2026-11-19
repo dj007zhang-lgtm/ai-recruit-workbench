@@ -201,12 +201,24 @@ export function buildDashboard(d, opts) {
     if (createdTs) for (const g of Object.values(byCand)) {
       if (g.pid === p.id && g.hiredTs) hireDays.push(daysBetween(createdTs, g.hiredTs))
     }
+    // 岗位级漏斗：简历→评估→面试→Offer→入职（口径与全局漏斗一致）
+    const mineCand = Object.values(byCand).filter(g => g.pid === p.id)
+    const fun = {
+      resume: mine.length,
+      screened: mine.filter(c => c.deep || (c.scores && Object.keys(c.scores).length)).length,
+      interview: mineCand.filter(g => g.entered && (g.entered['初试中'] || g.entered['复试中'] || g.entered['待复试'])).length,
+      offer: mineCand.filter(g => g.entered && (g.entered['Offer已发'] || g.entered['Offer已接受'] || g.entered['待入职']) || g.offerSent).length,
+      hired: hiredN,
+    }
+    // 周期：已入职均到岗；无入职 → 在途平均已停留天数（真实等待成本）
+    const inflowDays = flow.map(c => { const g = byCand[c.id]; return (g && g.receivedTs) ? Math.max(0, Math.round((Date.now() - new Date(g.receivedTs).getTime()) / 86400000)) : null }).filter(x => x != null)
     return {
       id: p.id, title: p.title, hc, hired: hiredN, inFlow: flow.length,
       gap: Math.max(0, hc - hiredN),
       progress: Math.min(100, Math.round(hiredN / hc * 100)),
       stageDist, status: p.status || '在招', parentId: p.parentId || '',
-      avgDays: hireDays.length ? Math.round(hireDays.reduce((a, b) => a + b, 0) / hireDays.length * 10) / 10 : null,
+      funnel: fun,
+      inflowAvgDays: inflowDays.length ? Math.round(inflowDays.reduce((a, b) => a + b, 0) / inflowDays.length * 10) / 10 : null,
     }
   }
   const allPosStats = ps.map(computePos)
