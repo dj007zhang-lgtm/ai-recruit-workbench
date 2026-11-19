@@ -1601,7 +1601,7 @@ export function apply(ctx, config = {}) {
         <button type="button" id="submitAll" style="width:100%;background:#34d399;color:#062;border:0;border-radius:10px;padding:13px;font:14.5px inherit;font-weight:700;cursor:pointer;margin-top:6px">提交全部结果</button>
         <div id="finalMsg" class="msg"></div>
       </div>` +
-      '</div></div>' +
+      '</div></div></div>' +
       '<script>' +
       'var DEC={};var items=document.querySelectorAll(".ivitem"),panels=document.querySelectorAll(".panel");' +
       'var N=' + list.length + ';' +

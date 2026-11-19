@@ -7,18 +7,23 @@ NODE="/Users/andyzhang/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/node/b
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 FAIL=0
 
-echo "==================== 1/4 语法检查 ===================="
+echo "==================== 0/6 内嵌代码校验（HTML/JS 字符串）===================="
+# 必须最先跑：字符串里拼的 HTML/内嵌 JS，外层 --check 查不出来（真实踩过：一个多余的 } 让整页按钮失效）
+if ! "$NODE" "$DIR/tests/embedded-check.mjs"; then echo "❌ 内嵌代码校验失败"; FAIL=1; fi
+
+echo ""
+echo "==================== 1/6 语法检查 ===================="
 for f in "$DIR"/*.js; do
   if ! "$NODE" --check "$f" >/dev/null 2>&1; then echo "❌ 语法错误: $(basename "$f")"; FAIL=1; else echo "✅ $(basename "$f")"; fi
 done
 if ! "/Users/andyzhang/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/python/bin/python3" -c "import ast;ast.parse(open('$DIR/parse_resume.py',encoding='utf-8').read())" 2>/dev/null; then echo "❌ parse_resume.py 语法错误"; FAIL=1; else echo "✅ parse_resume.py"; fi
 
 echo ""
-echo "==================== 2/4 业务规则测试 ===================="
+echo "==================== 2/6 业务规则测试 ===================="
 if ! "$NODE" "$DIR/tests/rules.test.mjs"; then FAIL=1; fi
 
 echo ""
-echo "==================== 3/4 渲染测试（SSR）===================="
+echo "==================== 3/6 渲染测试（SSR）===================="
 # 用真实数据渲染 main + 详情 + 各页面，任何异常即失败
 if [ -n "${PORT:-}" ]; then
   for pg in overview process ai talent; do
@@ -30,7 +35,7 @@ else
 fi
 
 echo ""
-echo "==================== 4/4 账本不变量 ===================="
+echo "==================== 4/6 账本不变量 ===================="
 if ! "$NODE" "$DIR/tests/ledger-check.mjs"; then FAIL=1; fi
 
 echo ""
