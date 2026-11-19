@@ -1,0 +1,62 @@
+{
+  "name": "@local/ai-recruiting-workbench",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "AI recruiting workbench harness plugin: append-only event ledger, human/machine contracts, interactive inbox workbench (adopt/ask/override/eliminate/offer/rollback), causal replay, versioned standards, and a live dashboard with period-over-period deltas.",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "dashboard.js",
+    "ledger.js",
+    "actions.js",
+    "intake.js",
+    "util.js",
+    "parse_resume.py",
+    "fetch_mail.py",
+    "mail.example.json",
+    "vendor",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "docs",
+    "icon.svg",
+    "README.md",
+    "assess.js",
+    "jd.js",
+    "scorecard.js",
+    "salary.js",
+    "deepassess.js",
+    "deepscore.js",
+    "salary-report.json",
+    "skills.js",
+    "vendor/skills.json",
+    "vendor/ocr/ocr",
+    "vendor/ocr/ocr.swift",
+    "vendor/stt/stt",
+    "vendor/stt/stt.swift",
+    "compliance.js",
+    "make_offer.py",
+    "fetch_page.js",
+    "match.js",
+    "gatecheck.js"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  }
+}

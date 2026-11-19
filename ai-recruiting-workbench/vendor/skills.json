@@ -1,0 +1,965 @@
+{
+ "schemaVersion": 1,
+ "source": "ESCO 分类思路（L语言/K知识/S技能/C证书）+ 中文招聘高频技能词表（人工整理，可扩充）",
+ "note": "alias 用于简历原文命中抽取；group 用于岗位族与技术栈匹配。",
+ "skills": [
+  {
+   "name": "Java",
+   "cat": "S",
+   "group": "技术栈-后端",
+   "alias": [
+    "java"
+   ]
+  },
+  {
+   "name": "Spring",
+   "cat": "S",
+   "group": "技术栈-后端",
+   "alias": [
+    "spring",
+    "spring boot",
+    "springboot",
+    "spring cloud",
+    "springcloud"
+   ]
+  },
+  {
+   "name": "MyBatis",
+   "cat": "S",
+   "group": "技术栈-后端",
+   "alias": [
+    "mybatis"
+   ]
+  },
+  {
+   "name": "JVM 调优",
+   "cat": "S",
+   "group": "技术栈-后端",
+   "alias": [
+    "jvm",
+    "jvm调优",
+    "gc调优"
+   ]
+  },
+  {
+   "name": "微服务",
+   "cat": "S",
+   "group": "技术栈-后端",
+   "alias": [
+    "微服务",
+    "microservice",
+    "microservices"
+   ]
+  },
+  {
+   "name": "Dubbo",
+   "cat": "S",
+   "group": "技术栈-后端",
+   "alias": [
+    "dubbo"
+   ]
+  },
+  {
+   "name": "分布式事务",
+   "cat": "S",
+   "group": "技术栈-后端",
+   "alias": [
+    "分布式事务",
+    "tcc",
+    "seata"
+   ]
+  },
+  {
+   "name": "Kafka",
+   "cat": "S",
+   "group": "技术栈-后端",
+   "alias": [
+    "kafka"
+   ]
+  },
+  {
+   "name": "RocketMQ",
+   "cat": "S",
+   "group": "技术栈-后端",
+   "alias": [
+    "rocketmq"
+   ]
+  },
+  {
+   "name": "Redis",
+   "cat": "S",
+   "group": "技术栈-后端",
+   "alias": [
+    "redis"
+   ]
+  },
+  {
+   "name": "MySQL",
+   "cat": "S",
+   "group": "技术栈-后端",
+   "alias": [
+    "mysql"
+   ]
+  },
+  {
+   "name": "分库分表",
+   "cat": "S",
+   "group": "技术栈-后端",
+   "alias": [
+    "分库分表",
+    "sharding"
+   ]
+  },
+  {
+   "name": "Elasticsearch",
+   "cat": "S",
+   "group": "技术栈-后端",
+   "alias": [
+    "elasticsearch",
+    "es搜索",
+    "elastic search"
+   ]
+  },
+  {
+   "name": "高并发",
+   "cat": "S",
+   "group": "技术栈-后端",
+   "alias": [
+    "高并发",
+    "qps",
+    "并发量"
+   ]
+  },
+  {
+   "name": "Go",
+   "cat": "S",
+   "group": "技术栈-后端",
+   "alias": [
+    "golang",
+    " go "
+   ]
+  },
+  {
+   "name": "Python",
+   "cat": "S",
+   "group": "技术栈-后端",
+   "alias": [
+    "python"
+   ]
+  },
+  {
+   "name": "C++",
+   "cat": "S",
+   "group": "技术栈-后端",
+   "alias": [
+    "c++",
+    "cpp"
+   ]
+  },
+  {
+   "name": "PHP",
+   "cat": "S",
+   "group": "技术栈-后端",
+   "alias": [
+    "php"
+   ]
+  },
+  {
+   "name": "Node.js",
+   "cat": "S",
+   "group": "技术栈-后端",
+   "alias": [
+    "node.js",
+    "nodejs",
+    "node "
+   ]
+  },
+  {
+   "name": "React",
+   "cat": "S",
+   "group": "技术栈-前端",
+   "alias": [
+    "react"
+   ]
+  },
+  {
+   "name": "Vue",
+   "cat": "S",
+   "group": "技术栈-前端",
+   "alias": [
+    "vue"
+   ]
+  },
+  {
+   "name": "TypeScript",
+   "cat": "S",
+   "group": "技术栈-前端",
+   "alias": [
+    "typescript",
+    " ts "
+   ]
+  },
+  {
+   "name": "JavaScript",
+   "cat": "S",
+   "group": "技术栈-前端",
+   "alias": [
+    "javascript",
+    " js "
+   ]
+  },
+  {
+   "name": "HTML/CSS",
+   "cat": "S",
+   "group": "技术栈-前端",
+   "alias": [
+    "html",
+    "css",
+    "html5",
+    "css3"
+   ]
+  },
+  {
+   "name": "Webpack",
+   "cat": "S",
+   "group": "技术栈-前端",
+   "alias": [
+    "webpack"
+   ]
+  },
+  {
+   "name": "Vite",
+   "cat": "S",
+   "group": "技术栈-前端",
+   "alias": [
+    "vite"
+   ]
+  },
+  {
+   "name": "Next.js",
+   "cat": "S",
+   "group": "技术栈-前端",
+   "alias": [
+    "next.js",
+    "nextjs"
+   ]
+  },
+  {
+   "name": "小程序开发",
+   "cat": "S",
+   "group": "技术栈-前端",
+   "alias": [
+    "小程序",
+    "mini program"
+   ]
+  },
+  {
+   "name": "Unity",
+   "cat": "S",
+   "group": "技术栈-游戏",
+   "alias": [
+    "unity",
+    "u3d",
+    "u3d开发"
+   ]
+  },
+  {
+   "name": "C#",
+   "cat": "S",
+   "group": "技术栈-游戏",
+   "alias": [
+    "c#",
+    "csharp"
+   ]
+  },
+  {
+   "name": "Addressables",
+   "cat": "S",
+   "group": "技术栈-游戏",
+   "alias": [
+    "addressables",
+    "ab包"
+   ]
+  },
+  {
+   "name": "Shader",
+   "cat": "S",
+   "group": "技术栈-游戏",
+   "alias": [
+    "shader",
+    "shader编程",
+    "着色器"
+   ]
+  },
+  {
+   "name": "渲染优化",
+   "cat": "S",
+   "group": "技术栈-游戏",
+   "alias": [
+    "渲染优化",
+    "渲染管线",
+    "drawcall"
+   ]
+  },
+  {
+   "name": "Unreal Engine",
+   "cat": "S",
+   "group": "技术栈-游戏",
+   "alias": [
+    "unreal",
+    "ue4",
+    "ue5"
+   ]
+  },
+  {
+   "name": "Cocos",
+   "cat": "S",
+   "group": "技术栈-游戏",
+   "alias": [
+    "cocos"
+   ]
+  },
+  {
+   "name": "动作捕捉",
+   "cat": "S",
+   "group": "技术栈-游戏",
+   "alias": [
+    "动作捕捉",
+    "动捕",
+    "mocap"
+   ]
+  },
+  {
+   "name": "机器学习",
+   "cat": "S",
+   "group": "技术栈-数据AI",
+   "alias": [
+    "机器学习",
+    "machine learning",
+    "ml"
+   ]
+  },
+  {
+   "name": "深度学习",
+   "cat": "S",
+   "group": "技术栈-数据AI",
+   "alias": [
+    "深度学习",
+    "deep learning",
+    "dl"
+   ]
+  },
+  {
+   "name": "PyTorch",
+   "cat": "S",
+   "group": "技术栈-数据AI",
+   "alias": [
+    "pytorch"
+   ]
+  },
+  {
+   "name": "TensorFlow",
+   "cat": "S",
+   "group": "技术栈-数据AI",
+   "alias": [
+    "tensorflow"
+   ]
+  },
+  {
+   "name": "大模型(LLM)",
+   "cat": "S",
+   "group": "技术栈-数据AI",
+   "alias": [
+    "大模型",
+    "llm",
+    "大语言模型",
+    "gpt"
+   ]
+  },
+  {
+   "name": "NLP",
+   "cat": "S",
+   "group": "技术栈-数据AI",
+   "alias": [
+    "nlp",
+    "自然语言处理"
+   ]
+  },
+  {
+   "name": "计算机视觉",
+   "cat": "S",
+   "group": "技术栈-数据AI",
+   "alias": [
+    "计算机视觉",
+    "cv",
+    "视觉算法"
+   ]
+  },
+  {
+   "name": "推荐算法",
+   "cat": "S",
+   "group": "技术栈-数据AI",
+   "alias": [
+    "推荐算法",
+    "推荐系统"
+   ]
+  },
+  {
+   "name": "数据分析",
+   "cat": "S",
+   "group": "技术栈-数据AI",
+   "alias": [
+    "数据分析",
+    "数据驱动",
+    "归因分析"
+   ]
+  },
+  {
+   "name": "SQL",
+   "cat": "S",
+   "group": "技术栈-数据AI",
+   "alias": [
+    "sql "
+   ]
+  },
+  {
+   "name": "数据仓库",
+   "cat": "S",
+   "group": "技术栈-数据AI",
+   "alias": [
+    "数据仓库",
+    "数仓",
+    "etl"
+   ]
+  },
+  {
+   "name": "BI 报表",
+   "cat": "S",
+   "group": "技术栈-数据AI",
+   "alias": [
+    "bi",
+    "报表",
+    "tableau",
+    "powerbi"
+   ]
+  },
+  {
+   "name": "Linux",
+   "cat": "S",
+   "group": "技术栈-运维",
+   "alias": [
+    "linux"
+   ]
+  },
+  {
+   "name": "Kubernetes",
+   "cat": "S",
+   "group": "技术栈-运维",
+   "alias": [
+    "kubernetes",
+    "k8s"
+   ]
+  },
+  {
+   "name": "Docker",
+   "cat": "S",
+   "group": "技术栈-运维",
+   "alias": [
+    "docker"
+   ]
+  },
+  {
+   "name": "CI/CD",
+   "cat": "S",
+   "group": "技术栈-运维",
+   "alias": [
+    "ci/cd",
+    "cicd",
+    "jenkins"
+   ]
+  },
+  {
+   "name": "自动化运维",
+   "cat": "S",
+   "group": "技术栈-运维",
+   "alias": [
+    "自动化运维",
+    "运维自动化",
+    "devops"
+   ]
+  },
+  {
+   "name": "Android",
+   "cat": "S",
+   "group": "技术栈-移动",
+   "alias": [
+    "android"
+   ]
+  },
+  {
+   "name": "iOS",
+   "cat": "S",
+   "group": "技术栈-移动",
+   "alias": [
+    "ios开发",
+    "ios客户端"
+   ]
+  },
+  {
+   "name": "Flutter",
+   "cat": "S",
+   "group": "技术栈-移动",
+   "alias": [
+    "flutter"
+   ]
+  },
+  {
+   "name": "React Native",
+   "cat": "S",
+   "group": "技术栈-移动",
+   "alias": [
+    "react native"
+   ]
+  },
+  {
+   "name": "Kotlin",
+   "cat": "S",
+   "group": "技术栈-移动",
+   "alias": [
+    "kotlin"
+   ]
+  },
+  {
+   "name": "Swift",
+   "cat": "S",
+   "group": "技术栈-移动",
+   "alias": [
+    "swift"
+   ]
+  },
+  {
+   "name": "项目管理",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "项目管理",
+    "项目负责人"
+   ]
+  },
+  {
+   "name": "需求分析",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "需求分析",
+    "需求调研"
+   ]
+  },
+  {
+   "name": "产品设计",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "产品设计",
+    "产品规划",
+    "prd"
+   ]
+  },
+  {
+   "name": "招聘管理",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "招聘",
+    "招聘管理",
+    "招聘流程"
+   ]
+  },
+  {
+   "name": "薪酬设计",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "薪酬",
+    "薪酬设计",
+    "薪酬体系"
+   ]
+  },
+  {
+   "name": "组织发展(OD)",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "od",
+    "组织发展"
+   ]
+  },
+  {
+   "name": "绩效管理",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "绩效",
+    "绩效考核",
+    "绩效管理"
+   ]
+  },
+  {
+   "name": "劳动关系",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "劳动关系",
+    "劳动法"
+   ]
+  },
+  {
+   "name": "人力资源信息化",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "hris",
+    "人力资源系统",
+    "人事系统"
+   ]
+  },
+  {
+   "name": "培训体系",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "培训体系",
+    "培训管理"
+   ]
+  },
+  {
+   "name": "财务分析",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "财务分析",
+    "财务报表",
+    "报表编制"
+   ]
+  },
+  {
+   "name": "税务管理",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "税务",
+    "纳税申报"
+   ]
+  },
+  {
+   "name": "成本管控",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "成本管控",
+    "成本控制",
+    "降本"
+   ]
+  },
+  {
+   "name": "合规与内控",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "合规",
+    "内控",
+    "风控"
+   ]
+  },
+  {
+   "name": "门店运营",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "门店运营",
+    "门店管理",
+    "店务"
+   ]
+  },
+  {
+   "name": "零售管理",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "零售",
+    "连锁门店"
+   ]
+  },
+  {
+   "name": "电商运营",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "电商运营",
+    "店铺运营",
+    "网店"
+   ]
+  },
+  {
+   "name": "广告投放",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "广告投放",
+    "信息流",
+    "投放"
+   ]
+  },
+  {
+   "name": "供应链管理",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "供应链",
+    "采购",
+    "供应商管理"
+   ]
+  },
+  {
+   "name": "客户成功",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "客户成功",
+    "客户维护"
+   ]
+  },
+  {
+   "name": "销售管理",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "销售管理",
+    "团队管理",
+    "业绩"
+   ]
+  },
+  {
+   "name": "商务谈判",
+   "cat": "S",
+   "group": "业务",
+   "alias": [
+    "商务谈判",
+    "谈判"
+   ]
+  },
+  {
+   "name": "数据驱动决策",
+   "cat": "S",
+   "group": "通用",
+   "alias": [
+    "数据驱动决策",
+    "指标体系"
+   ]
+  },
+  {
+   "name": "跨部门协作",
+   "cat": "S",
+   "group": "通用",
+   "alias": [
+    "跨部门",
+    "协同"
+   ]
+  },
+  {
+   "name": "团队管理",
+   "cat": "S",
+   "group": "通用",
+   "alias": [
+    "团队管理",
+    "带团队",
+    "管理团队"
+   ]
+  },
+  {
+   "name": "流程建设",
+   "cat": "S",
+   "group": "通用",
+   "alias": [
+    "流程建设",
+    "流程优化",
+    "sop"
+   ]
+  },
+  {
+   "name": "方案汇报",
+   "cat": "S",
+   "group": "通用",
+   "alias": [
+    "方案汇报",
+    "汇报",
+    "ppt"
+   ]
+  },
+  {
+   "name": "英文沟通",
+   "cat": "S",
+   "group": "通用",
+   "alias": [
+    "英文沟通",
+    "英语口语",
+    "english"
+   ]
+  },
+  {
+   "name": "AI 工具应用",
+   "cat": "S",
+   "group": "通用",
+   "alias": [
+    "aigc",
+    "ai工具",
+    "chatgpt",
+    "copilot"
+   ]
+  },
+  {
+   "name": "CET-4",
+   "cat": "L",
+   "group": "语言",
+   "alias": [
+    "cet-4",
+    "cet4",
+    "四级"
+   ]
+  },
+  {
+   "name": "CET-6",
+   "cat": "L",
+   "group": "语言",
+   "alias": [
+    "cet-6",
+    "cet6",
+    "六级"
+   ]
+  },
+  {
+   "name": "英语专业八级",
+   "cat": "L",
+   "group": "语言",
+   "alias": [
+    "专八",
+    "tem-8"
+   ]
+  },
+  {
+   "name": "日语",
+   "cat": "L",
+   "group": "语言",
+   "alias": [
+    "日语",
+    "jlpt"
+   ]
+  },
+  {
+   "name": "英语商务",
+   "cat": "L",
+   "group": "语言",
+   "alias": [
+    "商务英语",
+    "bec"
+   ]
+  },
+  {
+   "name": "计算机相关专业",
+   "cat": "K",
+   "group": "知识",
+   "alias": [
+    "计算机",
+    "软件工程",
+    "计算机科学与技术"
+   ]
+  },
+  {
+   "name": "人力资源专业知识",
+   "cat": "K",
+   "group": "知识",
+   "alias": [
+    "人力资源",
+    "hrm"
+   ]
+  },
+  {
+   "name": "财务知识",
+   "cat": "K",
+   "group": "知识",
+   "alias": [
+    "会计",
+    "财务管理"
+   ]
+  },
+  {
+   "name": "法律知识",
+   "cat": "K",
+   "group": "知识",
+   "alias": [
+    "法学",
+    "法律"
+   ]
+  },
+  {
+   "name": "CPA 注册会计师",
+   "cat": "C",
+   "group": "证书",
+   "alias": [
+    "cpa",
+    "注册会计师"
+   ]
+  },
+  {
+   "name": "CMA",
+   "cat": "C",
+   "group": "证书",
+   "alias": [
+    "cma"
+   ]
+  },
+  {
+   "name": "PMP",
+   "cat": "C",
+   "group": "证书",
+   "alias": [
+    "pmp"
+   ]
+  },
+  {
+   "name": "人力资源管理师",
+   "cat": "C",
+   "group": "证书",
+   "alias": [
+    "人力资源管理师",
+    "一级人力资源"
+   ]
+  },
+  {
+   "name": "法律职业资格",
+   "cat": "C",
+   "group": "证书",
+   "alias": [
+    "法律职业资格",
+    "司法考试",
+    "法考"
+   ]
+  },
+  {
+   "name": "证券从业",
+   "cat": "C",
+   "group": "证书",
+   "alias": [
+    "证券从业"
+   ]
+  },
+  {
+   "name": "CFA",
+   "cat": "C",
+   "group": "证书",
+   "alias": [
+    "cfa"
+   ]
+  }
+ ]
+}

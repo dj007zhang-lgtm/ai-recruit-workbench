@@ -1,0 +1,5 @@
+- insert:
+    - id: ai-recruiting-workbench
+      name: '@local/ai-recruiting-workbench'
+      config:
+        dataDir: '/Users/andyzhang/Documents/AI招聘工作她/recruiting'

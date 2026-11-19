@@ -1,0 +1,38 @@
+#!/bin/sh
+# 候选人个人信息入仓防护钩子（兼容 macOS BSD grep）
+export LC_ALL=C
+
+PAT='1[3-9][0-9]{9}|[0-9]{17}[0-9Xx]|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
+
+# 1) 拦截疑似简历/数据文件（扩展名或数据目录）
+FILES=$(git diff --cached --name-only --diff-filter=ACM -- 2>/dev/null)
+BAD=$(printf '%s\n' "$FILES" | grep -vE '(^|/)data/(\.gitkeep|README\.md)$' | grep -Ei '(\.(pdf|docx|doc|xlsx|xls)$)|((^|/)(data|uploads|resumes|candidates|datasets)/)|((^|/)recruiting/)' 2>/dev/null)
+if [ -n "$BAD" ]; then
+  echo "禁止提交疑似简历/数据文件："
+  echo "$BAD"
+  exit 1
+fi
+
+# 2) 拦截疑似个人信息（逐文件；豁免测试夹具/演示假数据/第三方库/非招聘资料）
+for f in $FILES; do
+  case "$f" in
+    */tests/*|*/vendor/*|*/skills/*|skills/*|tests/*|vendor/*|*make_fake_data*|*example*) continue ;;
+  esac
+  [ -f "$f" ] || continue
+  H=$(git show ":$f" 2>/dev/null | grep -avEi "example\.(com|org)|@demo\.|@test\." | grep -acEi "$PAT" 2>/dev/null)
+  if [ "${H:-0}" -gt 0 ]; then
+    echo "检测到疑似个人信息（已打码显示）：$f"
+    git show ":$f" 2>/dev/null | grep -aEi "$PAT" | sed -E 's/1[3-9][0-9]{9}/1** **** ****/g' | head -10
+    exit 1
+  fi
+done
+
+# 3) 拦截 >10MB 文件
+BIG=$(printf '%s\n' "$FILES" | while read -r f; do [ -f "$f" ] && du -m "$f" 2>/dev/null; done | awk '$1>10{print}')
+if [ -n "$BIG" ]; then
+  echo "存在大于10MB的文件，请确认不是数据文件："
+  echo "$BIG"
+  exit 1
+fi
+
+exit 0

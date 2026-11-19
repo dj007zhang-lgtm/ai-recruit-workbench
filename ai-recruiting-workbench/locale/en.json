@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "AI recruiting workbench",
+    "description": "Append-only event ledger with derived projections, causal replay, human/machine contracts and versioned standards; real-time dashboard with period-over-period deltas.",
+    "detail": "docs/DETAIL.md"
+  }
+}

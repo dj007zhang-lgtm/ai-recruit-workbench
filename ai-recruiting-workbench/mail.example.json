@@ -1,0 +1,15 @@
+{
+  "protocol": "imap",
+  "host": "imap.example.com",
+  "port": 993,
+  "ssl": true,
+  "user": "hr@example.com",
+  "password": "在这里填应用专用密码，或改用环境变量 RECRUIT_MAIL_PASSWORD",
+  "folder": "INBOX",
+  "criteria": "UNSEEN",
+  "limit": 50,
+  "markSeen": false,
+  "dataDir": "./recruiting（你的本地数据目录，勿入库）",
+  "source": "其他",
+  "defaultPositionId": ""
+}
