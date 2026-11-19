@@ -110,7 +110,8 @@ export function buildDashboard(d, opts) {
     { id: 'passed', label: '初筛通过', count: reached.passed, hint: 'S/A/B 级' },
     { id: 'interview', label: '进入面试', count: reached.interview, hint: '初试中' },
     { id: 'second', label: '复试', count: reached.second, hint: '复试中' },
-    { id: 'offer', label: 'Offer/入职', count: reached.offer, hint: '录用' },
+    { id: 'offer', label: 'Offer', count: reached.offer, hint: '已发出' },
+    { id: 'hired', label: '入职', count: byStage['已入职'] || 0, hint: '已报到 · 接受率=入职/Offer' },
   ]
   for (let i = 1; i < pipeline.length; i++) {
     const prevN = pipeline[i - 1].count
