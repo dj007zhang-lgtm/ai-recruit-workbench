@@ -257,6 +257,35 @@ console.log('\n===== 4. client.js 真实 SSR 渲染 =====')
   }
 }
 
+/* ---------- 5. 前后端 action 契约一致性 ---------- */
+console.log('\n===== 5. 前后端 action 一致性 =====')
+{
+  const actSrc = readFileSync(join(DIR, '..', 'actions.js'), 'utf8')
+  const cliSrc = readFileSync(join(DIR, '..', 'client.js'), 'utf8')
+  const backend = new Set([...actSrc.matchAll(/case '([a-z_]+)':/g)].map(m => m[1]))
+  // FlowForm 的 kind 及其映射表
+  const kindMapM = cliSrc.match(/const KIND_ACTION = \{([^}]+)\}/)
+  const kindMap = {}
+  if (kindMapM) for (const m of kindMapM[1].matchAll(/([a-z_]+):\s*'([a-z_]+)'/g)) kindMap[m[1]] = m[2]
+  // FlowForm 内所有 kind 分支
+  const kinds = new Set([...cliSrc.matchAll(/kind === '([a-z_]+)'/g)].map(m => m[1]))
+  let issues = 0
+  for (const k of kinds) {
+    const mapped = kindMap[k] || k
+    if (!backend.has(mapped)) {
+      bad('FlowForm kind「' + k + '」映射后是「' + mapped + '」，后端 actions.js 无此 case → 会报 unknown action')
+      issues++
+    }
+  }
+  // 显式发出的 action
+  const sent = new Set()
+  for (const m of cliSrc.matchAll(/action:\s*'([a-z_]+)'/g)) sent.add(m[1])
+  for (const a of sent) {
+    if (!backend.has(a)) { bad('前端发出 action「' + a + '」，后端不支持'); issues++ }
+  }
+  if (!issues) good('前后端 action 完全一致（' + kinds.size + ' 个 kind，' + sent.size + ' 个显式 action）')
+}
+
 console.log('')
 if (fail) { console.log('❌ 内嵌代码校验失败：' + fail + ' 项'); process.exit(1) }
 console.log('✅ 内嵌代码校验通过')

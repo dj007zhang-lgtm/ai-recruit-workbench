@@ -1229,9 +1229,13 @@ window.__ModuleLoader__.load({
         if (kind === 'send_offer') salary = (f.salaryBase ? f.salaryBase + 'K' : '') + (f.salaryMonths ? '×' + f.salaryMonths : '')
         if (kind === 'send_offer' && !reason) reason = (f.startDate ? '预计 ' + fmtDate(f.startDate) + ' 入职；' : '') + (f.note || 'Offer')
         if (kind === 'hire') { salary = f.salary || salary; reason = [f.startDate ? '入职:' + fmtDate(f.startDate) : '', f.position ? '岗位:' + f.position : '', f.reportTo ? '汇报:' + f.reportTo : '', f.reason].filter(Boolean).join('｜') }
-        onDone({ action: kind, candidateId: candidate.id, currentSalary: f.currentSalary, salaryNote: f.salaryNote, channel: f.channel, at: f.at, place: f.place, placeType: f.placeType, interviewer: f.interviewer, score: kind === 'feedback' ? computed : (f.score === '' ? null : Number(f.score)), note: f.note, pass: f.pass, salary, reason, dims: kind === 'feedback' ? dims.map(d => ({ dim: d.name, level: dv[d.name] })) : null })
+        // 兜底：kind 名与后端 action 名不完全一致，统一映射（防 unknown action）
+        const KIND_ACTION = { backcheck: 'background_check', accept: 'offer_accept', decline: 'offer_decline', onboard: 'schedule_onboarding', send_offer: 'send_offer', hire: 'hire', invite: 'invite', interview: 'interview', feedback: 'feedback', eliminate: 'eliminate', activate: 'activate' }
+        onDone({ action: KIND_ACTION[kind] || kind, candidateId: candidate.id, currentSalary: f.currentSalary, salaryNote: f.salaryNote, channel: f.channel, at: f.at, place: f.place, placeType: f.placeType, interviewer: f.interviewer, score: kind === 'feedback' ? computed : (f.score === '' ? null : Number(f.score)), note: f.note, pass: f.pass, salary, reason, dims: kind === 'feedback' ? dims.map(d => ({ dim: d.name, level: dv[d.name] })) : null })
       }
-      return h(Block, { title: titles[kind] || '流程动作' },
+      // 标题兜底：kind 未匹配时也给出可辨识的名字，避免出现两个都叫「流程动作」的区块
+      const KIND_LABEL = { backcheck: '录入背调结论', accept: '记录 Offer 接受', decline: '记录 Offer 拒绝', onboard: '安排入职', invite: '发邀约', interview: '安排面试', feedback: '录面评', send_offer: '发 Offer', hire: '确认入职', eliminate: '淘汰候选人', activate: '重新激活' }
+      return h(Block, { title: titles[kind] || KIND_LABEL[kind] || ('流程动作 · ' + String(kind || '')) },
         ...body,
         flowToast ? h('div', { style: { fontSize: 11, color: C.warn, marginTop: 6, padding: '5px 9px', background: tint(C.warn,.10), borderRadius: 7 } }, '⚠ ' + flowToast) : null,
         h('div', { style: { display: 'flex', gap: 8, marginTop: 12 } },
