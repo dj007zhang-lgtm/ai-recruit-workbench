@@ -373,7 +373,7 @@ window.__ModuleLoader__.load({
         setBusy(true); setMsg('')
         try {
           const j = await api('/api/ai-recruiting/batch-invite-interviewer', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ candidateIds: picked, interviewer, round, place, baseUrl: window.location.origin }) })
+            body: JSON.stringify({ candidateIds: picked, interviewer, round, place }) })
           if (j && j.ok) { setLinks(j.items || []); setMsg('已生成 ' + j.count + ' 个面试官协作链接，可一次性复制转发') }
           else setMsg('生成失败：' + ((j && j.error) || '未知'))
         } catch (e) { setMsg('生成失败：' + String(e.message || e)) }
@@ -1193,7 +1193,8 @@ window.__ModuleLoader__.load({
         h('span', { style: token(C.muted) }, c.stage),
         c.lastInvite ? h('span', { style: { fontSize: 11.5, padding: '1px 7px', borderRadius: 9, background: 'rgba(124,58,237,.14)', color: '#a78bfa', border: '1px solid rgba(124,58,237,.3)' } }, '📨 ' + (c.lastInvite.round || '初试') + '已邀约' + (c.lastInvite.at ? ' · ' + (fmtAt(c.lastInvite.at) || c.lastInvite.at) : '') + (c.lastInvite.channel ? ' · ' + c.lastInvite.channel : '')) : null,
         (c.lastInvite && c.lastInvite.token) ? h('button', { type: 'button', style: { fontSize: 10, padding: '1px 8px', borderRadius: 9, background: tint(C.purple, .12), color: C.purple, border: '1px solid ' + tint(C.purple, .4), cursor: 'pointer' }, title: '复制给面试官的免登录面试/面评链接', onClick: () => {
-          const url = window.location.origin + '/api/ai-recruiting/interview?token=' + encodeURIComponent(c.lastInvite.token)
+          // 用后端返回的完整 URL（DSH 桌面端 origin 是 dsh-app://app，前端拼接浏览器打不开）
+          const url = c.lastInvite.url || ('/api/ai-recruiting/interview?token=' + encodeURIComponent(c.lastInvite.token))
           try { navigator.clipboard.writeText(url); setToast('已复制面试官链接，可直接发给面试官') } catch (e) { setToast('链接：' + url) }
         } }, '🔗 面试官链接') : null,
         // 面试官反馈的可面试时间（招聘方据此排期；点时段即填入选定时间）

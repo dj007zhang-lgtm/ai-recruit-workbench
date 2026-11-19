@@ -319,7 +319,12 @@ export function apply(ctx, config = {}) {
         const interviewer = String(a.interviewer || '').slice(0, 20)
         const round = String(a.round || '初试')
         const place = String(a.place || '')
-        const baseUrl = String(a.baseUrl || '').replace(/\/+$/, '')
+        // 关键：不能用前端 window.location.origin（DSH 桌面端是 dsh-app://app 自定义协议，浏览器打不开）。
+        // webServer.getOrigin() 返回真实 HTTP 监听地址（如 http://127.0.0.1:55050）。
+        let baseUrl = ''
+        try { baseUrl = ctx.webServer.getOrigin() } catch (e) { baseUrl = '' }
+        if (!baseUrl) baseUrl = String(a.baseUrl || '').replace(/\/+$/, '')
+        baseUrl = String(baseUrl).replace(/\/+$/, '')
         const out = []
         for (const cid of ids) {
           const c = s.byId[cid]
@@ -389,7 +394,8 @@ export function apply(ctx, config = {}) {
           ? config.dataDir
           : join((ctx.workingDirectory && ctx.workingDirectory.defaultDirectory) || process.cwd(), 'recruiting')
         ensure(d)
-        const wb = workbenchData(d, cid, buildDashboard, { period })
+        let _origin = ''; try { _origin = ctx.webServer.getOrigin() } catch (e) {}
+        const wb = workbenchData(d, cid, buildDashboard, { period, origin: _origin })
         // AI 通道状态（不做真实调用；由 /llm-probe 主动探测，或由最近一次评估失败推断）
         try {
           const s0 = fold(d)

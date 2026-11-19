@@ -56,6 +56,8 @@ export function positionImpact(d, positionId) {
 
 /** 工作台一次拉取所需的全部数据：看板 + 收件箱 + 选中候选人详情 + 因果链 + 规范版本。 */
 export function workbenchData(d, candidateId, buildDashboard, opts) {
+  opts = opts || {}
+  const ORIGIN = String(opts.origin || '').replace(/\/+$/, '')
   if (!existsSync(d)) mkdirSync(d, { recursive: true })
   migrateLegacy(d)
   const s = fold(d)
@@ -138,7 +140,7 @@ export function workbenchData(d, candidateId, buildDashboard, opts) {
     id: c.id, name: c.name, pid: c.pid, source: c.source, stage: c.stage,
     conf: c.conf, route: c.route, needsOcr: !!c.needsOcr,
     undetermined: (c.undetermined || []).length, unlinked: !!c.unlinked,
-    lastInvite: invMap[c.id] ? { at: invMap[c.id].at || '', channel: invMap[c.id].channel || '', round: invMap[c.id].round || '', token: ivTokenMap[c.id] || '' } : null,
+    lastInvite: invMap[c.id] ? { at: invMap[c.id].at || '', channel: invMap[c.id].channel || '', round: invMap[c.id].round || '', token: ivTokenMap[c.id] || '', url: (ORIGIN && ivTokenMap[c.id]) ? (ORIGIN + '/api/ai-recruiting/interview?token=' + encodeURIComponent(ivTokenMap[c.id])) : '' } : null,
     weighted: c.weighted != null ? c.weighted : null,
     score: c.deep && c.deep.score != null ? c.deep.score : (c.weighted != null ? c.weighted : null),
     grade: deriveGrade(c),
