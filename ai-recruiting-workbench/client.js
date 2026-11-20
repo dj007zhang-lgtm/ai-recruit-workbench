@@ -4,7 +4,15 @@
   window.__REC_ERR_TRAP__ = true
   const CLIENT_BUILD = 'v20261118-3'
   // 良性浏览器警告/错误白名单（含 ResizeObserver 循环噪音）——在 show 入口统一拦截
-  const BENIGN = ['ResizeObserver', 'Script error.', 'Non-Error promise rejection', 'The play() request was interrupted', 'WebSocket connection', 'Failed to load resource', 'Measurement of', 'Passive event listener']
+  const BENIGN = [
+    'ResizeObserver', 'Script error.', 'Non-Error promise rejection', 'The play() request was interrupted',
+    'WebSocket connection', 'Failed to load resource', 'Measurement of', 'Passive event listener',
+    // 其他 DSH 插件的内部日志/重试提示：不是招聘工作台的错误，不该被本插件捕获展示
+    '[deepseek-account]', '[deepseek]', 'notification read failed', 'retaining cards',
+    'retrying on the next poll', 'account', 'quota', 'Insufficient Balance',
+    // 网络抖动/轮询失败属瞬时问题，插件自身已有重试，不需要红色横幅惊扰用户
+    'Failed to fetch', 'NetworkError', 'timeout of', 'ECONNREFUSED', 'socket hang up',
+  ]
   const isBenign = (msg) => { const m = String(msg == null ? '' : msg); return BENIGN.some(b => m.indexOf(b) >= 0) }
       const show = (msg, stack) => {
     if (isBenign(msg)) return   // 最上游拦截：良性噪音永不显示
@@ -27,15 +35,38 @@
       }
     } catch (e) { console.error(msg) }
   }
-  window.addEventListener('error', e => { const m = (e && e.message) || (e && e.error && e.error.message) || ''; if (isBenign(m)) return; if (e && (e.message || e.error)) show('运行错误：' + m, e.error && e.error.stack) })
-  window.addEventListener('unhandledrejection', e => { const r = e && e.reason; const m = (r && r.message) || r; if (isBenign(m)) return; if (r) show('Promise: ' + m, r && r.stack) })
+  // 全局错误只展示「源自招聘工作台」的：看堆栈是否指向本插件文件，
+  // 否则其他插件/第三方库的报错会全被我们显示成红色横幅（真实误报）。
+  const fromOurs = (stack) => {
+    const st = String(stack || '')
+    return /ai-recruiting-workbench|plugins\/\?\?@local\/ai-recruiting/i.test(st)
+  }
+  window.addEventListener('error', e => {
+    const m = (e && e.message) || (e && e.error && e.error.message) || ''
+    if (!m || isBenign(m)) return
+    const stack = (e && e.error && e.error.stack) || ''
+    // 有堆栈时必须是我们的；无堆栈（如资源加载失败）只在消息含插件标识时展示
+    if (stack ? !fromOurs(stack) : !/ai-recruiting/i.test(m)) return
+    show('运行错误：' + m, stack)
+  })
+  window.addEventListener('unhandledrejection', e => {
+    const r = e && e.reason
+    const m = (r && r.message) || r
+    if (!m || isBenign(m)) return
+    const stack = (r && r.stack) || ''
+    if (stack ? !fromOurs(stack) : !/ai-recruiting/i.test(String(m))) return
+    show('Promise: ' + m, stack)
+  })
   const origCe = console.error.bind(console)
   console.error = function () {
     try {
       const args = Array.prototype.slice.call(arguments)
       const err = args.find(a => a instanceof Error)
       const msg = args.map(a => (a instanceof Error) ? a.message : (typeof a === 'string' ? a : JSON.stringify(a).slice(0, 200))).join(' | ')
-      if (msg.indexOf('Warning') < 0 && !isBenign(msg)) show('console.error: ' + msg.slice(0, 600), err && err.stack)
+      // 只展示招聘工作台自身的错误（带 [ai-recruiting] 前缀或堆栈指向本插件），
+      // 其他插件的日志（如 [deepseek-account]）一律放行——劫持全局 console.error 会误报别人的问题。
+      const isOurs = /\[ai-recruiting\]|ai-recruiting-workbench|client\.js/i.test(msg) || (err && err.stack && /ai-recruiting-workbench/.test(err.stack))
+      if (isOurs && msg.indexOf('Warning') < 0 && !isBenign(msg)) show('console.error: ' + msg.slice(0, 600), err && err.stack)
     } catch (e) {}
     origCe.apply(null, arguments)
   }
