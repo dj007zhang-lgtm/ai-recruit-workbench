@@ -70,3 +70,8 @@ _cmp.html
 
 # ===== 个人本地脚本（不入库）=====
 scripts/make_fake_data.mjs
+
+# ===== 文章配图/截图（生成产物，不入库）=====
+shots/
+*.png
+公众号文章.md

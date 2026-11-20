@@ -256,7 +256,14 @@ export function apply(ctx, config = {}) {
         const batch = findByBatchToken(d, token)
         if (batch) {
           const s0 = fold(d)
-          const list = batch.candidateIds.map(cid => briefForCandidate(d, s0, cid, batch.round, batch.place, batch.interviewer))
+          // 过滤掉已定局的人（已淘汰/人才库/已入职等）：批量链接是当时生成的，
+          // 之后候选人可能已被淘汰，不应再出现在待评审列表里（真实 bug：已淘汰的人还显示）
+          const DEAD = ['已淘汰', '人才库', 'Offer拒绝', '已入职']
+          const activeIds = batch.candidateIds.filter(cid => {
+            const cc = s0.byId[cid]
+            return cc && DEAD.indexOf(cc.stage) < 0
+          })
+          const list = activeIds.map(cid => briefForCandidate(d, s0, cid, batch.round, batch.place, batch.interviewer))
           return new Response(interviewerBatchHtml(token, batch, list, esc0), { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } })
         }
         const hit = findByInterviewToken(d, token)
