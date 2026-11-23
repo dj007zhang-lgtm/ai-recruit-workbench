@@ -2093,7 +2093,7 @@ window.__ModuleLoader__.load({
               : h('div', null, ...unlinked.slice(0, 8).map(c => h('div', { key: c.id, style: { display: 'flex', alignItems: 'center', gap: 6, padding: '5px 0', borderBottom: '1px solid ' + C.border } },
                   h('span', { style: { fontSize: 11, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, c.name || c.id),
                   h('button', { type: 'button', style: { ...primary, padding: '1px 8px', fontSize: 10.5 }, onClick: () => { onOpen && onOpen(c.id); onGoto('process') } }, '选岗位')))),
-              unlinked.length > 8 ? h('div', { style: { fontSize: 10.5, color: C.muted, marginTop: 4 } }, '还有 ' + (unlinked.length - 8) + ' 份') : null),
+              unlinked.length > 8 ? h('div', { style: { fontSize: 10.5, color: C.muted, marginTop: 4 } }, '还有 ' + (unlinked.length - 8) + ' 人') : null),
             h('button', { type: 'button', style: { ...btn, padding: '6px 0', fontSize: 11.5, width: '100%', marginTop: 8 }, onClick: () => onGoto('positions') }, '＋ 新建职位')))
     }
 
@@ -2203,7 +2203,6 @@ window.__ModuleLoader__.load({
             h('div', { style: { fontSize: 12, color: '#8b9bc4', marginTop: 6 } }, dateStr + ' · 招聘驾驶舱')),
           h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 30, alignItems: 'center' } },
             ...[{ label: '在招职位', v: hiring, u: '个' }, { label: '还差', v: totalGap, u: '人' }, { label: '在途', v: totalInFlow, u: '人' },
-              { label: '本周新增', v: (k.find(x => x.key === 'intake') || {}).value != null ? (k.find(x => x.key === 'intake') || {}).value : '—', u: '份' },
               { label: '待你判断', v: pending, u: '项' }].map(st => h('div', { key: st.label },
               h('div', { style: { fontSize: 28, fontWeight: 800, lineHeight: 1, letterSpacing: '-.5px', background: 'linear-gradient(90deg,#9db8ff,#c4b5fd)', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent', display: 'inline-block' } }, String(st.v), h('span', { style: { fontSize: 12, fontWeight: 500, marginLeft: 2, WebkitTextFillColor: '#8b9bc4' } }, st.u)),
               h('div', { style: { fontSize: 11, color: '#8b9bc4', marginTop: 6 } }, st.label)))))))
@@ -2274,7 +2273,7 @@ window.__ModuleLoader__.load({
       // 次要指标 chips
       const minor = dash.kpisMinor || []
       if (minor.length) out.push(h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 } },
-        ...minor.map(x => h('span', { key: x.key, title: x.key === 'intake' ? '接入事件数（含重复投递）；候选人总量为去重后人数' : '', style: { fontSize: 11.5, padding: '3px 10px', borderRadius: 9, background: C.surface, border: '1px solid ' + C.border, color: C.muted } },
+        ...minor.map(x => h('span', { key: x.key, title: '', style: { fontSize: 11.5, padding: '3px 10px', borderRadius: 9, background: C.surface, border: '1px solid ' + C.border, color: C.muted } },
           x.label + ' ' + x.value + (x.unit || '')))))
       // 6 环节累计管道 + 转化箭头流
       // 看板契约·漏斗+分布：回答「流程断点在哪一环」与「AI 判档结构」（管理者/AI 视角）

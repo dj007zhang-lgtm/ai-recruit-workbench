@@ -424,10 +424,8 @@ export function buildDashboard(d, opts) {
   ]
   // 兼容：附加次要 KPI（小字排展示）
   const kpisMinor = [
-    K('candidates', '候选人总量', cs.length, prevSnap ? prevSnap.candidates : null, '人', '全库'),
-    K('intake', periodLabel + '简历接入', PERIOD === 'all' ? weekNew : (flow.intake != null ? Math.max(0, flow.intake) : weekNew),
-      PERIOD === 'all' ? prevNew : prevFlow.intake, '份', PERIOD === 'all' ? '近 7 天' : (periodLabel + '流量 · 环比上' + (PERIOD === 'week' ? '周' : '月'))),
-    K('screenFail', 'AI 初筛淘汰', reached.failed, null, '份', reached.screened ? ('挡掉 ' + reached.failed + '/' + reached.screened + ' 份 · 免人工筛') : '免人工筛'),
+    K('candidates', '候选人总量', cs.length, prevSnap ? prevSnap.candidates : null, '人', '去重后 · 含在流程与归档'),
+    K('screenFail', 'AI 初筛淘汰', reached.failed, null, '人', reached.screened ? ('挡掉 ' + reached.failed + '/' + reached.screened + ' 人 · 免人工筛') : '免人工筛'),
     K('pending', '待人工拍板', needConfirm, prevSnap ? prevSnap.pendingDecision : null, '人', '必须人给结论'),
     K('talent', '人才库沉淀', cs.filter(c => c.stage === '人才库' || c.stage === '已淘汰').length, prevSnap ? prevSnap.talent : null, '人', '淘汰+主动入库，可复捞'),
     K('autoRate', '免人工率', autoRate, prevSnap && prevSnap.autoRate != null ? prevSnap.autoRate : null, '%', '执行环节'),
