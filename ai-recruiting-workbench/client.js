@@ -2886,20 +2886,6 @@ window.__ModuleLoader__.load({
     }
 
     /* ============ 会话首屏精简条 ============ */
-    function CompactBar({ ctx }) {
-      const [d, setD] = React.useState(null)
-      React.useEffect(() => { const load = () => api(BOARD).then(setD).catch(() => {}); load(); const id = setInterval(load, 30000); return () => clearInterval(id) }, [])
-      const open = () => { try { if (ctx.layout && ctx.layout.selectPanel) ctx.layout.selectPanel('ai-recruiting') } catch (e) {} }
-      if (!d) return null
-      const pick = ['candidates', 'pending', 'evaluated']
-      return h('div', { style: { ...card, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '4px 0', padding: '6px 12px' } },
-        h('span', { style: { fontWeight: 700, color: C.accent, fontSize: 11.5 } }, '招聘'),
-        ...d.kpis.filter(x => pick.indexOf(x.key) >= 0).map(x => h('span', { key: x.key, style: { fontSize: 11.5 } }, h('span', { style: { color: C.muted } }, x.label + ' '), h('b', null, String(x.value) + x.unit)))),
-        h('div', { style: { flex: 1 } }),
-        h('button', { type: 'button', style: { ...btn, borderColor: C.accent, color: C.accent }, onClick: open }, '打开工作台 →')
-    }
-
-
     return {
       inject: ['slots'],
       apply(ctx) {
@@ -2907,7 +2893,6 @@ window.__ModuleLoader__.load({
         // mainPanel 是 flex:1/min-height:0 的 flex 列容器，子项用 flex:1+min-height:0 即可撑满并自行滚动
         const fill = { flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'auto', width: '100%' }
         ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'ai-recruiting' }, () => h('div', { style: fill }, h(Safe, { render: () => h(Workbench, { ctx }) }))))
-        ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({ name: 'conversation.input.dock', id: 'ai-recruiting-compact', order: 5, label: '招聘' }, () => h(Safe, { render: () => h(CompactBar, { ctx }) })))
       },
     }
   },
