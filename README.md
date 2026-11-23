@@ -6,6 +6,18 @@
 
 **前置要求**：[DeepSeek Harness](https://deepseek.com) 桌面版（含 Node 运行时与 LLM 网关）· macOS 12+（OCR/STT 用系统能力）· Python 3.10+
 
+### 方式一：DSH 插件市场（推荐）
+
+打开 DeepSeek Harness → 插件管理 → 粘贴仓库地址：
+
+```
+https://github.com/dj007zhang-lgtm/ai-recruit-workbench
+```
+
+安装后重启 DSH，左侧出现「AI 招聘工作台」。
+
+### 方式二：命令行
+
 ```bash
 # 1. 克隆
 git clone https://github.com/dj007zhang-lgtm/ai-recruit-workbench.git
