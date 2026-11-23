@@ -75,3 +75,12 @@ scripts/make_fake_data.mjs
 shots/
 *.png
 公众号文章.md
+
+# ===== 本地归档（不进仓库）=====
+_archive/
+prototype.html
+workbench.html
+video/
+skills/
+PRD-*.md
+V3.*-*.md
