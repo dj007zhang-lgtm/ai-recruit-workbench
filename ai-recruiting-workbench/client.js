@@ -563,7 +563,7 @@ window.__ModuleLoader__.load({
           stage ? h('button', { type: 'button', style: { ...btn, padding: '2px 8px', fontSize: 11.5 }, onClick: () => setStage('') }, '× ' + stage) : null,
           msg ? h('span', { style: { fontSize: 11.5, color: C.muted } }, msg) : null),
         h('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 11.5 } },
-          h('thead', { style: { position: 'sticky', top: 0, background: 'var(--dsw-alias-surface-2, rgba(127,143,170,.10))', zIndex: 2 } },
+          h('thead', { style: { position: 'sticky', top: 0, background: 'var(--dsw-alias-bg-layer-1, #fff)', zIndex: 2 } },
             h('tr', null,
               h('th', { style: { width: 26, padding: '5px 4px' } }, h('input', { type: 'checkbox', checked: rows.length > 0 && selCount === rows.length, onChange: toggleAll, style: { cursor: 'pointer' } })),
               TH({ label: '姓名', w: 90 }),
@@ -1661,7 +1661,7 @@ window.__ModuleLoader__.load({
     function ClosePositionModal({ ctx, onCancel, onChoose }) {
       if (!ctx) return null
       return h('div', { style: { position: 'fixed', inset: 0, background: 'rgba(8,12,22,.55)', backdropFilter: 'blur(3px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }, onClick: (e) => { if (e.target === e.currentTarget) onCancel() } },
-        h('div', { style: { width: 480, maxWidth: '94vw', maxHeight: '86vh', overflowY: 'auto', background: 'var(--dsw-alias-surface-1,#161c2a)', border: '1px solid ' + C.border, borderRadius: 14, padding: 16 } },
+        h('div', { style: { width: 480, maxWidth: '94vw', maxHeight: '86vh', overflowY: 'auto', background: 'var(--dsw-alias-bg-overlay, #fff)', border: '1px solid ' + C.border, borderRadius: 14, padding: 16 } },
           h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 } },
             h('b', { style: { fontSize: 13 } }, '关闭「' + ctx.title + '」'),
             h('span', { style: { fontSize: 10, padding: '1px 7px', borderRadius: 8, background: tint(C.warn,.14), color: C.warn } }, '有 ' + ctx.count + ' 人在途')),
@@ -2622,7 +2622,7 @@ window.__ModuleLoader__.load({
         } catch (e) { setMsg('激活失败：' + String(e.message || e)) }
       }
       const renderTalentDrawer = () => !picked ? null : h('div', { style: { position: 'fixed', inset: 0, background: 'rgba(8,12,22,.5)', zIndex: 9997, display: 'flex', justifyContent: 'flex-end' }, onClick: (e) => { if (e.target === e.currentTarget) { setPicked(null); setPickedDetail(null) } } },
-        h('div', { className: 'rec-detail-drawer', style: { width: 560, maxWidth: '96vw', height: '100%', overflowY: 'auto', background: 'var(--dsw-alias-surface-1,#161c2a)', borderLeft: '1px solid ' + C.border, padding: 16 } },
+        h('div', { className: 'rec-detail-drawer', style: { width: 560, maxWidth: '96vw', height: '100%', overflowY: 'auto', background: 'var(--dsw-alias-bg-overlay, #fff)', borderLeft: '1px solid ' + C.border, padding: 16 } },
           h('div', { style: { display: 'flex', alignItems: 'center', marginBottom: 10 } }, h('b', { style: { fontSize: 13 } }, '人才档案'), h('div', { style: { flex: 1 } }), h('button', { type: 'button', style: { ...btn, border: 'none', background: 'transparent', fontSize: 15 }, onClick: () => { setPicked(null); setPickedDetail(null) } }, '✕')),
           pickedBusy ? h(Loading, { text: '加载中…' }) : (pickedDetail ? h(TalentDossier, { detail: pickedDetail, onRevive: () => { setPicked(null); setPickedDetail(null); revive(picked) } }) : h(EmptyState, { title: '暂无档案' }))))
       // 初始直接展示池内全部（同步数据），检索有结果时再覆盖——避免异步 search 失败/未回时空白
@@ -2856,7 +2856,9 @@ window.__ModuleLoader__.load({
         // 流程页全宽（接入简历是独立模块，不在这里）
         // 操作区（视图切换 + 阶段筛选 + 批量转发）固定在顶部：筛完往下翻人时不用滚回去
         body = h('div', null,
-          h('div', { style: { position: 'sticky', top: -14, zIndex: 20, background: 'var(--dsw-alias-surface-1, #161c2a)', paddingTop: 14, paddingBottom: 4, marginTop: -14, boxShadow: '0 6px 12px -8px rgba(0,0,0,.45)' } },
+          // sticky 区必须用「不透明」页面底色：--dsw-alias-surface-1 是半透明卡片色，
+          // 用它会让滚动内容透出来与筛选条文字叠加（浅色主题下尤其明显）。
+          h('div', { style: { position: 'sticky', top: -14, zIndex: 20, background: 'var(--dsw-alias-bg-base, #fff)', paddingTop: 14, paddingBottom: 4, marginTop: -14, boxShadow: '0 6px 12px -8px rgba(0,0,0,.18)' } },
             viewToggle,
             h(Funnel, { counts, stage, setStage: flowSetStage }),
             h(BatchInviteCard, { data, onDone: reload })),
@@ -2872,7 +2874,7 @@ window.__ModuleLoader__.load({
         // 浮层表单
         modal && modalCand ? h('div', { style: { position: 'fixed', inset: 0, background: 'rgba(8,12,22,.55)', backdropFilter: 'blur(3px)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, animation: 'recFade .15s ease-out' },
           onClick: (e) => { if (e.target === e.currentTarget) setModal(null) } },
-          h('div', { style: { width: 480, maxWidth: '94vw', maxHeight: '86vh', overflowY: 'auto', background: 'var(--dsw-alias-surface-1, #161c2a)', border: '1px solid rgba(127,143,170,.22)', borderRadius: 16, boxShadow: '0 24px 70px rgba(0,0,0,.55)', animation: 'recPop .18s ease-out' } },
+          h('div', { style: { width: 480, maxWidth: '94vw', maxHeight: '86vh', overflowY: 'auto', background: 'var(--dsw-alias-bg-overlay, #fff)', border: '1px solid rgba(127,143,170,.22)', borderRadius: 16, boxShadow: '0 24px 70px rgba(0,0,0,.35)', animation: 'recPop .18s ease-out' } },
             h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 16px', borderBottom: '1px solid ' + C.border } },
               h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
                 h('span', { style: { width: 8, height: 8, borderRadius: 99, background: C.accent, display: 'inline-block' } }),
