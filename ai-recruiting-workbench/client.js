@@ -2631,6 +2631,13 @@ window.__ModuleLoader__.load({
       return h('div', null,
         h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' } },
           h('div', { style: { fontSize: 13, fontWeight: 700 } }, '◈ 人才库'),
+          // 人才库 = 主动入库 + 淘汰沉淀 两类，分开显示让人知道构成
+          (function () {
+            const a = pool.filter(x => x.stage === '人才库').length
+            const b = pool.filter(x => x.stage === '已淘汰').length
+            return h('span', { style: { fontSize: 11, color: C.muted } },
+              '共 ' + pool.length + ' 人 · 主动入库 ' + a + ' · 淘汰沉淀 ' + b)
+          })(),
           h('span', { style: { fontSize: 11.5, color: C.muted } }, '池内 ' + pool.length + ' 人 · 按技能召回')),
         h('div', { style: { ...card, marginBottom: 9, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' } },
           h('input', { style: { ...input, width: 200 }, value: q, placeholder: '姓名 / 技能关键词', onChange: e => setQ(e.target.value), onKeyDown: e => { if (e.key === 'Enter') search() } }),
