@@ -120,6 +120,62 @@ def readability(text):
             "hasPhone": has_phone, "hasEmail": has_mail, "chars": n}
 
 
+
+def field_check(text, name_hint=""):
+    """关键字段自检：解析出的文本是否包含判断所需的必备信息。
+
+    存在理由：pdfminer 是纯文本抽取，不理解版面。双栏/表格/设计感强的模板
+    会把字段抽乱或漏抽，而这些错误会静默流到下游（AI 拿残缺文本判档 → 误判）。
+    这里在入口就把「字段缺失」暴露出来，而不是让下游猜。
+
+    返回 {ok, missing[], level, note}：
+      level=ok      字段齐全
+      level=suspect 缺关键字段，建议人工核对后再用 AI 结果
+      level=poor    缺太多，AI 判断不可信
+    """
+    t = text or ""
+    compact = re.sub(r"\s", "", t)
+    missing = []
+
+    # 1) 姓名：简历开头通常有姓名，或调用方已从文件名/文本抽取
+    if name_hint:
+        if name_hint not in t and len(name_hint) >= 2:
+            # 允许姓名被拆开（如中间有空格）
+            if re.sub(r"\s", "", name_hint) not in compact:
+                missing.append("姓名未在正文出现")
+    # 2) 教育经历：需要能定位到学历/学校/专业之一
+    edu_hit = any(k in t for k in ["教育", "学历", "本科", "硕士", "博士", "专科", "大学", "学院"])
+    if not edu_hit:
+        missing.append("未识别到教育经历")
+    # 3) 工作/项目经历：需要能定位到经历段落
+    exp_hit = any(k in t for k in ["工作经历", "工作经验", "项目经历", "项目经验", "实习经历", "任职", "在职"])
+    if not exp_hit:
+        missing.append("未识别到工作/项目经历")
+    # 4) 时间：判断年限与稳定性必需
+    if not re.search(r"(19|20)\d{2}", t):
+        missing.append("未识别到任何年份")
+    # 5) 技能/技术关键词
+    skill_hit = any(k in t for k in ["技能", "技术栈", "掌握", "熟悉", "精通", "熟练", "了解"])
+    if not skill_hit:
+        missing.append("未识别到技能描述")
+
+    n = len(compact)
+    too_short = n < 80
+    if too_short:
+        missing.append("正文过短（%d 字）" % n)
+
+    if len(missing) >= 3 or too_short:
+        level = "poor"
+        note = "解析质量差，AI 判断不可信，请人工核对原件"
+    elif missing:
+        level = "suspect"
+        note = "字段缺失，建议核对原件后再采信 AI 结论"
+    else:
+        level = "ok"
+        note = ""
+
+    return {"ok": level == "ok", "missing": missing, "level": level, "note": note, "chars": n}
+
 def parse(path):
     ext = os.path.splitext(path)[1].lower()
     warnings = []
@@ -129,7 +185,7 @@ def parse(path):
         if txt:
             text = clean(txt)
             return {"ok": True, "text": text, "format": ext, "needsOcr": False, "ocr": True,
-                    "readability": readability(text), "warnings": ["图片经 Vision OCR 文本化（自动识别，供核对）"]}
+                    "readability": readability(text), "fieldCheck": field_check(text), "warnings": ["图片经 Vision OCR 文本化（自动识别，供核对）"]}
         return {
             "ok": True, "text": "", "format": ext, "needsOcr": True,
             "warnings": ["图片 OCR 失败（Vision 不可用）；原件已留档，需人工补录文本"],
@@ -146,7 +202,7 @@ def parse(path):
         if len(text) < 30:
             warnings.append("docx 可提取文本过少，可能是扫描件或图片版")
         return {"ok": True, "text": text, "format": ext, "needsOcr": False,
-                "readability": readability(text), "warnings": warnings}
+                "readability": readability(text), "fieldCheck": field_check(text), "warnings": warnings}
 
     if ext == ".pdf":
         from pypdf import PdfReader
@@ -164,10 +220,10 @@ def parse(path):
             if txt:
                 text = clean(txt)
                 return {"ok": True, "text": text, "format": ext, "needsOcr": False, "ocr": True,
-                        "readability": readability(text), "warnings": warnings + ["扫描件经 Vision OCR 文本化（自动识别，供核对）"]}
+                        "readability": readability(text), "fieldCheck": field_check(text), "warnings": warnings + ["扫描件经 Vision OCR 文本化（自动识别，供核对）"]}
             return {"ok": True, "text": "", "format": ext, "needsOcr": True, "warnings": warnings}
         return {"ok": True, "text": text, "format": ext, "needsOcr": False,
-                "readability": readability(text), "warnings": warnings}
+                "readability": readability(text), "fieldCheck": field_check(text), "warnings": warnings}
 
     if ext in TEXTUTIL_EXT:
         try:
@@ -179,7 +235,7 @@ def parse(path):
                 raise RuntimeError(r.stderr.decode("utf-8", "replace")[:200])
             text = clean(r.stdout.decode("utf-8", "replace"))
             return {"ok": True, "text": text, "format": ext, "needsOcr": False,
-                    "readability": readability(text), "warnings": warnings}
+                    "readability": readability(text), "fieldCheck": field_check(text), "warnings": warnings}
         except Exception as e:
             warnings.append("textutil 转换失败：%s" % e)
             return {"ok": False, "error": str(e), "format": ext, "warnings": warnings}
@@ -197,7 +253,7 @@ def parse(path):
         return {"ok": False, "error": "无法解码文件", "format": ext, "warnings": warnings}
     text = clean(text)
     return {"ok": True, "text": text, "format": ext, "needsOcr": False,
-            "readability": readability(text), "warnings": warnings}
+            "readability": readability(text), "fieldCheck": field_check(text), "warnings": warnings}
 
 
 def main():

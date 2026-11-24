@@ -47,6 +47,101 @@ const daysBetween = (a, b) => Math.max(0, Math.round((new Date(b).getTime() - ne
  *  - cycle：平均处理周期（接入→进面试 / 接入→终态）
  *  - sourceQuality：渠道质量（总量 × 通过率）
  */
+/**
+ * 评估公平性审计：检查判档结果是否被「与岗位能力无关的因素」系统性影响。
+ *
+ * 存在理由：模型偏见是真实风险（同一份实测显示不同版本模型对性别的偏向方向相反），
+ * 而本系统在入口就隔离了性别/年龄/婚育等字段——AI 看不到，理论上无法据此歧视。
+ * 但「看不到」不等于「不会间接学到」：姓名、学校层次、公司名气、地域都可能成为代理变量。
+ *
+ * 本审计不追求统计显著性（样本量通常不够），只做「异常提示」：
+ * 当某一类特征群体的判档分布显著偏离整体时，标记出来让人复核。
+ * 它不是判决，是提醒。
+ *
+ * @param {object} d 数据目录
+ * @param {object} snap fold 后的状态
+ * @returns {{enabled:boolean, reason?:string, groups:Array, alerts:Array}}
+ */
+export function auditAssessmentFairness(d, snap) {
+  const cs = (snap && snap.candidates) || []
+  // 只看已评估且有档位的
+  const graded = cs.filter(c => c.route && ['S', 'A', 'B', 'C'].indexOf(c.route) >= 0)
+  if (graded.length < 8) {
+    return { enabled: false, reason: '样本不足 8 人，审计无意义', groups: [], alerts: [] }
+  }
+
+  // 代理变量：这些不是敏感字段，但可能间接承载群体信息
+  const probes = [
+    { key: 'school', label: '院校层次', pick: (c) => {
+        const t = c.resume || ''
+        if (/985|211|双一流|清华|北大|浙大|复旦|交大|南大|中科大|哈工大/.test(t)) return '名校'
+        if (/大学|学院/.test(t)) return '普通院校'
+        return '未标注'
+      } },
+    { key: 'src', label: '来源渠道', pick: (c) => c.source || '未标注' },
+    { key: 'gap', label: '空窗期', pick: (c) => {
+        const t = c.resume || ''
+        // 粗检：出现「待业」「空窗」「gap」等字样
+        return /待业|空窗|gap|休息|备考/.test(t) ? '有空窗' : '无标注'
+      } },
+  ]
+
+  const groups = []
+  const alerts = []
+
+  for (const probe of probes) {
+    const bucket = {}
+    for (const c of graded) {
+      const g = probe.pick(c)
+      if (!bucket[g]) bucket[g] = { n: 0, S: 0, A: 0, B: 0, C: 0, sumScore: 0 }
+      bucket[g].n++
+      bucket[g][c.route]++
+      bucket[g].sumScore += Number(c.weighted) || 0
+    }
+    const rows = Object.keys(bucket).map(k => {
+      const b = bucket[k]
+      return {
+        group: k, n: b.n,
+        S: b.S, A: b.A, B: b.B, C: b.C,
+        avgScore: b.n ? Math.round(b.sumScore / b.n) : null,
+        cRate: b.n ? Math.round(b.C / b.n * 100) : 0,
+        sRate: b.n ? Math.round((b.S + b.A) / b.n * 100) : 0,
+      }
+    }).sort((a, b) => b.n - a.n)
+    groups.push({ key: probe.key, label: probe.label, rows })
+
+    // 异常检测：只看样本 >= 3 的分组，C 级比例或平均分差异过大
+    const valid = rows.filter(r => r.n >= 3)
+    if (valid.length >= 2) {
+      const overall = Math.round(graded.filter(c => c.route === 'C').length / graded.length * 100)
+      for (const r of valid) {
+        if (r.cRate - overall >= 40) {
+          alerts.push({
+            probe: probe.label, group: r.group, n: r.n,
+            issue: 'C 级比例 ' + r.cRate + '%，高于整体 ' + overall + '%',
+            hint: '该类群体淘汰率明显偏高，建议抽查几份评估依据是否只基于岗位相关证据',
+          })
+        }
+      }
+      // 平均分差异
+      const scores = valid.filter(r => r.avgScore != null).map(r => r.avgScore)
+      if (scores.length >= 2) {
+        const mx = Math.max(...scores), mn = Math.min(...scores)
+        if (mx - mn >= 25) {
+          const hi = valid.find(r => r.avgScore === mx), lo = valid.find(r => r.avgScore === mn)
+          alerts.push({
+            probe: probe.label, group: lo.group + ' vs ' + hi.group,
+            issue: '平均分差 ' + (mx - mn) + ' 分（' + mn + ' vs ' + mx + '）',
+            hint: '分数差距较大，确认差异来自岗位相关能力而非院校/渠道等代理变量',
+          })
+        }
+      }
+    }
+  }
+
+  return { enabled: true, groups, alerts, sample: graded.length }
+}
+
 export function buildDashboard(d, opts) {
   opts = opts || {}
   const PERIOD = opts.period === 'week' || opts.period === 'month' ? opts.period : 'all'

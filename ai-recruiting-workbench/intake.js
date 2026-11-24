@@ -228,11 +228,20 @@ export function handleUpload(d, a, opts = {}) {
       dropped: clean.dropped,
       files: [relFile],
       needsOcr: !!parsed.needsOcr,
-      parse: { format: parsed.format, warnings: parsed.warnings || [], ok: parsed.ok !== false, readability: parsed.readability || null, ocr: !!parsed.ocr },
+      parse: {
+        format: parsed.format, warnings: parsed.warnings || [], ok: parsed.ok !== false,
+        readability: parsed.readability || null, ocr: !!parsed.ocr,
+        // 关键字段自检：缺字段时下游不该盲信 AI 结论（pdfminer 不理解版面，双栏/表格易漏抽）
+        fieldCheck: parsed.fieldCheck || null,
+      },
       mail: { from: a.from || '', subject: a.subject || '', date: a.date || '', messageId: mailId, sourceReason: a.sourceReason || '', sourceConf: a.sourceConf || '' },
       created: new Date().toISOString(),
     },
-    evidence: clean.dropped.length ? ['入口脱敏：' + clean.dropped.join('、')] : [],
+    evidence: [
+      ...(clean.dropped.length ? ['入口脱敏：' + clean.dropped.join('、')] : []),
+      ...((parsed.fieldCheck && parsed.fieldCheck.missing && parsed.fieldCheck.missing.length)
+        ? ['解析自检：' + parsed.fieldCheck.missing.join('、')] : []),
+    ],
     inputHash: hash(buf),
   })
   // 上传即绑定也记 candidate.bound（与后绑定同口径：账本里岗位关联全程可追溯）

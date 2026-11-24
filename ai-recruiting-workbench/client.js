@@ -2548,6 +2548,41 @@ window.__ModuleLoader__.load({
             h('div', { key: i, style: { flex: '1 1 110px', background: C.surface, borderRadius: 9, padding: '8px 10px', textAlign: 'center' } },
               h('div', { style: { fontSize: 18, fontWeight: 800 } }, String(x[1] != null ? x[1] : '—')),
               h('div', { style: { fontSize: 10.5, color: C.muted, marginTop: 2 } }, x[0]))))))
+      // ===== 公平性审计：判档是否被院校/渠道/空窗等代理变量系统性影响 =====
+      // 存在理由：入口已隔离性别/年龄/婚育等敏感字段（AI 看不到），
+      // 但院校层次、渠道、空窗期等仍可能成为代理变量，需监控判档分布是否异常。
+      const fa = data.fairness
+      if (fa) {
+        if (!fa.enabled) {
+          out.push(h('div', { style: { ...card, marginBottom: 9, padding: '9px 12px' } },
+            h('div', { style: { fontSize: 11.5, fontWeight: 700, marginBottom: 3 } }, '⚖ 公平性审计'),
+            h('div', { style: { fontSize: 11, color: C.muted } }, fa.reason || '数据不足，暂不审计')))
+        } else {
+          out.push(h('div', { style: { ...card, marginBottom: 9 } },
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7, flexWrap: 'wrap' } },
+              h('span', { style: { fontSize: 11.5, fontWeight: 700 } }, '⚖ 公平性审计'),
+              h('span', { style: { fontSize: 11, color: C.muted } }, '判档是否被院校/渠道/空窗等非能力因素影响 · 样本 ' + fa.sample + ' 人'),
+              h('div', { style: { flex: 1 } }),
+              (fa.alerts && fa.alerts.length)
+                ? h('span', { style: { fontSize: 11, padding: '2px 9px', borderRadius: 9, background: 'rgba(240,173,78,.14)', color: C.warn, fontWeight: 600 } }, '⚠ ' + fa.alerts.length + ' 项需复核')
+                : h('span', { style: { fontSize: 11, color: C.good } }, '✓ 未发现异常分布')),
+            (fa.alerts && fa.alerts.length)
+              ? h('div', { style: { marginBottom: 7 } },
+                  ...fa.alerts.map((a, i) => h('div', { key: i, style: { fontSize: 11, padding: '6px 9px', borderRadius: 8, background: 'rgba(240,173,78,.09)', border: '1px solid rgba(240,173,78,.3)', marginBottom: 4 } },
+                    h('b', null, '[' + a.probe + '] ' + a.group),
+                    h('span', { style: { color: C.muted } }, ' — ' + a.issue),
+                    h('div', { style: { fontSize: 10.5, color: C.muted, marginTop: 2 } }, a.hint))))
+              : null,
+            h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+              ...(fa.groups || []).map((g, gi) => h('div', { key: gi, style: { flex: '1 1 200px', background: C.surface, borderRadius: 9, padding: '8px 10px' } },
+                h('div', { style: { fontSize: 10.5, color: C.muted, marginBottom: 5 } }, g.label),
+                ...g.rows.filter(r => r.n >= 3).map((r, ri) => h('div', { key: ri, style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 3 } },
+                  h('span', { style: { minWidth: 56 } }, r.group),
+                  h('span', { style: { color: C.muted } }, 'n=' + r.n),
+                  h('span', { style: { color: C.accent } }, '均分' + (r.avgScore != null ? r.avgScore : '—')),
+                  h('span', { style: { color: r.cRate >= 60 ? C.warn : C.muted } }, 'C率' + r.cRate + '%'))))))))
+        }
+      }
       return h('div', null, ...out)
     }
 

@@ -8,6 +8,7 @@ import {
   HUMAN_CONTRACT, MACHINE_CONTRACT, readEvents,
 } from './ledger.js'
 import { autoAssess } from './assess.js'
+import { auditAssessmentFairness } from './dashboard.js'
 import { ruleJD, jdToMarkdown } from './jd.js'
 import { techStackFit } from './deepscore.js'
 import { gradeFromScore } from './deepassess.js'
@@ -407,9 +408,12 @@ export function workbenchData(d, candidateId, buildDashboard, opts) {
     return { ocr, readability: withRead, skills: withSkills, gap: withGap, gapAvg: gapN ? Math.round(gapSum / gapN) : null }
   })()
 
+  // 公平性审计：检查判档是否被院校/渠道/空窗等代理变量系统性影响（不是判决，是提醒）
+  const fairness = (function () { try { return auditAssessmentFairness(d, s) } catch (e) { return { enabled: false, reason: String(e.message || e), groups: [], alerts: [] } } })()
+
   return {
     generatedAt: new Date().toISOString(),
-    dashboard, inbox: items, selectedId, detail, candidates,
+    dashboard, inbox: items, selectedId, detail, candidates, fairness,
     interviews: liveInterviews, interviewsDone: doneInterviews.slice(0, 8), alerts, trend, calibrationStats, aiExtra, aiAlignment, talentPool, actualPayList, currentSalaryList, salaryAccuracy, salaryCal, aiVsInterviewer,
     positions: s.positions.map(p => ({ id: p.id, title: p.title, dept: p.dept, city: p.city, hc: p.hc, band: p.band, status: p.status, gates: p.gates, abilities: p.abilities, jd: p.jd || '' })),
     standards: standardVersions(d),
