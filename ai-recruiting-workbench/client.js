@@ -2583,6 +2583,32 @@ window.__ModuleLoader__.load({
                   h('span', { style: { color: r.cRate >= 60 ? C.warn : C.muted } }, 'C率' + r.cRate + '%'))))))))
         }
       }
+      // ===== 面试结果回流：AI 判档 vs 面试实际结果的偏离检测 =====
+      // 与人改判的区别：改判是主观修正，面试结果是客观验证——后者更硬。
+      const oc = data.outcomeCalibration
+      if (oc && oc.hasEnough) {
+        const signals = oc.signals || []
+        out.push(h('div', { style: { ...card, marginBottom: 9 } },
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7, flexWrap: 'wrap' } },
+            h('span', { style: { fontSize: 11.5, fontWeight: 700 } }, '\u21a9 \u9762\u8bd5\u7ed3\u679c\u56de\u6d41\u6821\u51c6'),
+            h('span', { style: { fontSize: 11, color: C.muted } }, 'AI \u5224\u6863\u4e0e\u5b9e\u9645\u9762\u8bd5\u7ed3\u679c\u5bf9\u7167 \u00b7 \u504f\u79bb\u8fc7\u5927\u7684\u6863\u4f4d\u63d0\u793a\u590d\u6838\u951a\u70b9'),
+            h('div', { style: { flex: 1 } }),
+            signals.length
+              ? h('span', { style: { fontSize: 11, padding: '2px 9px', borderRadius: 9, background: 'rgba(240,173,78,.14)', color: C.warn, fontWeight: 600 } }, '\u26a0 ' + signals.length + ' \u4e2a\u6863\u4f4d\u504f\u79bb')
+              : h('span', { style: { fontSize: 11, color: C.good } }, '\u2713 \u5404\u6863\u4f4d\u901a\u8fc7\u7387\u7b26\u5408\u9884\u671f')),
+          signals.length
+            ? h('div', { style: { marginBottom: 7 } },
+                ...signals.map((sg, i) => h('div', { key: i, style: { fontSize: 11, padding: '6px 9px', borderRadius: 8, background: 'rgba(240,173,78,.09)', border: '1px solid rgba(240,173,78,.3)', marginBottom: 4 } },
+                  h('b', null, sg.grade + ' \u7ea7'),
+                  h('span', { style: { color: C.muted } }, ' \u2014 \u5b9e\u9645\u901a\u8fc7\u7387 ' + sg.rate + '%\uff08\u9884\u671f\u7ea6 ' + sg.expected + '%\uff09'),
+                  h('div', { style: { fontSize: 10.5, color: C.muted, marginTop: 2 } }, sg.note))))
+            : null,
+          h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+            ...(oc.stat || []).filter(x => x.n > 0).map((x, i) => h('div', { key: i, style: { flex: '1 1 100px', background: C.surface, borderRadius: 9, padding: '8px 10px', textAlign: 'center' } },
+              h('div', { style: { fontSize: 11, color: C.muted, marginBottom: 3 } }, x.grade + ' \u7ea7'),
+              h('div', { style: { fontSize: 16, fontWeight: 800, color: x.rate >= 60 ? C.good : (x.rate >= 30 ? C.warn : C.bad) } }, (x.rate != null ? x.rate + '%' : '\u2014')),
+              h('div', { style: { fontSize: 10, color: C.muted, marginTop: 2 } }, x.pass + '/' + x.n + ' \u901a\u8fc7'))))))
+      }
       return h('div', null, ...out)
     }
 

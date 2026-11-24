@@ -258,3 +258,70 @@ export function stackFit(position, resume) {
   return { fit: 'unknown', jobStack: primary, jobStacks: groups.map(g => g.group), candStacks: [], stackRate: 0,
     reason: '简历未明确体现岗位主栈「' + primary + '」相关技能（' + jobNames + '）' }
 }
+
+/**
+ * AI 代写 / 过度润色检测（标记，不淘汰）。
+ *
+ * 存在理由：本系统的核心是「BARS 判档 + 引用原文证据」。如果简历本身是 AI 润色
+ * 甚至重写的，那么被引用的「原文证据」可能是漂亮话而非事实——整条证据链的可信度被动摇。
+ *
+ * 检测不追求判定「是否 AI 写的」（这不可靠），只标记「文本特征异常」，
+ * 提示面试时重点核实量化数据是否真实。宁可误标，不可漏标——因为漏标代价更高。
+ *
+ * 返回 { level, score, signals[], note }：
+ *   level=clean    未见异常
+ *   level=suspect  有 1-2 项特征，面试时留意
+ *   level=likely   有 3+ 项特征，量化数据需重点核实
+ */
+export function detectAiPolish(text) {
+  const t = String(text || '')
+  const signals = []
+  if (t.length < 100) return { level: 'clean', score: 0, signals: [], note: '' }
+
+  // 1) 空洞的企业黑话密度（有词无数）
+  const JARGON = ['赋能', '闭环', '抓手', '打法', '组合拳', '生态位', '护城河', '飞轮', '第二曲线',
+    '底层逻辑', '顶层设计', '方法论', '颗粒度', '对齐', '拉通', '沉淀', '复用', '范式', '势能',
+    'leveraging', 'synergy', 'paradigm shift', 'best-in-class', 'cutting-edge', 'seamless']
+  const jargonHits = JARGON.filter(w => t.indexOf(w) >= 0)
+  if (jargonHits.length >= 3) {
+    signals.push('企业黑话密集（' + jargonHits.slice(0, 4).join('、') + '）')
+  }
+
+  // 2) 排比/对仗结构密度（AI 润色的典型痕迹）
+  const parallelPatterns = [
+    /不仅[^。；\n]{4,40}而且/g, /一方面[^。；\n]{4,40}另一方面/g,
+    /既[^。；\n]{4,30}又[^。；\n]{4,30}/g, /从[^。；\n]{2,15}到[^。；\n]{2,15}/g,
+  ]
+  let parallelCount = 0
+  for (const re of parallelPatterns) { const m = t.match(re); if (m) parallelCount += m.length }
+  if (parallelCount >= 3) signals.push('排比句式密集（' + parallelCount + ' 处）')
+
+  // 3) 形容词堆砌但缺数字
+  const ADJ = ['深入', '全面', '显著', '大幅', '有效', '充分', '高度', '极大', '卓越', '优异', '出色', '完善']
+  const adjCount = ADJ.reduce((n, w) => n + (t.split(w).length - 1), 0)
+  const numCount = (t.match(/\d+(\.\d+)?\s*(%|万|千|亿|ms|s|qps|tps|人|倍)/gi) || []).length
+  if (adjCount >= 5 && numCount <= 2) {
+    signals.push('形容词多（' + adjCount + ' 处）但量化数据少（' + numCount + ' 处）')
+  }
+
+  // 4) 段落结构过度工整（每段长度高度一致 + 都以短句总结收尾）
+  const paras = t.split(/\n\s*\n|\n(?=[•·\-*\d])/).map(x => x.trim()).filter(x => x.length > 30)
+  if (paras.length >= 4) {
+    const lens = paras.map(p => p.length)
+    const avg = lens.reduce((a, b) => a + b, 0) / lens.length
+    const variance = lens.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / lens.length
+    const cv = Math.sqrt(variance) / (avg || 1)
+    if (cv < 0.28) signals.push('段落长度高度一致（变异系数 ' + cv.toFixed(2) + '），人工写作通常更参差')
+  }
+
+  // 5) 过度完美的标点与格式（全角半角统一、无错字痕迹在短文本上无意义，这里看符号密度）
+  const emojiOrBullet = (t.match(/[✅🎯📌🔹🔸▶●◆]/g) || []).length
+  if (emojiOrBullet >= 6) signals.push('装饰符号密集（' + emojiOrBullet + ' 个）')
+
+  // 评分与分级
+  const score = signals.length
+  let level = 'clean', note = ''
+  if (score >= 3) { level = 'likely'; note = '文本特征高度接近 AI 生成/重度润色，面试须核实量化数据真实性' }
+  else if (score >= 1) { level = 'suspect'; note = '有 AI 润色痕迹，建议面试时重点核实项目数据' }
+  return { level, score, signals, note }
+}

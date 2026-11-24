@@ -392,6 +392,57 @@ export function workbenchData(d, candidateId, buildDashboard, opts) {
   })()
 
   // 引入能力的使用统计（诚实口径：可验证的候选人数据）
+
+  // 面试结果回流校准池：把「AI 判档 vs 面试实际结果」的分歧转成标准修订信号。
+  // 与「人改判」的区别：改判是人的主观修正，面试结果是客观验证。
+  // 当某档位的实际通过率与预期严重偏离时，说明该档位的锚点或分流规则有问题。
+  const outcomeCalibration = (function () {
+    const byCand = {}
+    for (const e of evAll) {
+      const id = (e.subject || {}).id
+      if (!id) continue
+      byCand[id] = byCand[id] || { aiGrade: null, passes: [], rounds: 0 }
+      if (e.type === 'assessment.recorded' && e.actor === 'agent') {
+        const p = e.payload || {}
+        const g = (p.deep && p.deep.grade) || (String(p.route || '').match(/([SABC])\s*级/) || [])[1]
+        if (g) byCand[id].aiGrade = String(g).toUpperCase()
+      }
+      if (e.type === 'feedback.submitted') {
+        const p = e.payload || {}
+        if (p.pass != null) { byCand[id].passes.push(p.pass !== false); byCand[id].rounds++ }
+      }
+    }
+    const stat = { S: { n: 0, pass: 0 }, A: { n: 0, pass: 0 }, B: { n: 0, pass: 0 }, C: { n: 0, pass: 0 } }
+    for (const id of Object.keys(byCand)) {
+      const r = byCand[id]
+      if (!r.aiGrade || !r.passes.length) continue
+      const g = stat[r.aiGrade]; if (!g) continue
+      g.n++
+      // 全部轮次都通过才算通过（严格口径）
+      if (r.passes.every(x => x === true)) g.pass++
+    }
+    // 预期通过率（用于判断偏离）：S 应高通过、B 应中等、C 应极低
+    const EXPECT = { S: 80, A: 60, B: 35, C: 10 }
+    const signals = []
+    for (const grade of ['S', 'A', 'B', 'C']) {
+      const g = stat[grade]
+      if (g.n < 3) continue                       // 样本不足不下结论
+      const rate = Math.round(g.pass / g.n * 100)
+      const exp = EXPECT[grade]
+      const dev = rate - exp
+      if (Math.abs(dev) >= 35) {
+        signals.push({
+          grade, n: g.n, pass: g.pass, rate, expected: exp, deviation: dev,
+          direction: dev < 0 ? 'over' : 'under',  // over=AI判得过松（实际通过率低于预期）
+          note: dev < 0
+            ? 'AI 判 ' + grade + ' 级的人实际面试通过率仅 ' + rate + '%（预期约 ' + exp + '%），该档位可能判得过松，建议复核锚点'
+            : 'AI 判 ' + grade + ' 级的人实际面试通过率高达 ' + rate + '%（预期约 ' + exp + '%），该档位可能判得过严，建议复核锚点',
+        })
+      }
+    }
+    return { stat: Object.keys(stat).map(k => ({ grade: k, n: stat[k].n, pass: stat[k].pass, rate: stat[k].n ? Math.round(stat[k].pass / stat[k].n * 100) : null })), signals, hasEnough: Object.keys(stat).some(k => stat[k].n >= 3) }
+  })()
+
   const aiExtra = (() => {
     let ocr = 0, withRead = 0, withSkills = 0, withGap = 0, gapSum = 0, gapN = 0
     for (const c of s.candidates) {
@@ -414,7 +465,7 @@ export function workbenchData(d, candidateId, buildDashboard, opts) {
   return {
     generatedAt: new Date().toISOString(),
     dashboard, inbox: items, selectedId, detail, candidates, fairness,
-    interviews: liveInterviews, interviewsDone: doneInterviews.slice(0, 8), alerts, trend, calibrationStats, aiExtra, aiAlignment, talentPool, actualPayList, currentSalaryList, salaryAccuracy, salaryCal, aiVsInterviewer,
+    interviews: liveInterviews, interviewsDone: doneInterviews.slice(0, 8), alerts, trend, calibrationStats, aiExtra, aiAlignment, talentPool, actualPayList, currentSalaryList, salaryAccuracy, salaryCal, aiVsInterviewer, outcomeCalibration,
     positions: s.positions.map(p => ({ id: p.id, title: p.title, dept: p.dept, city: p.city, hc: p.hc, band: p.band, status: p.status, gates: p.gates, abilities: p.abilities, jd: p.jd || '' })),
     standards: standardVersions(d),
     contracts: { human: HUMAN_CONTRACT, machine: MACHINE_CONTRACT },

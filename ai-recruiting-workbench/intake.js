@@ -7,6 +7,7 @@ import { join, basename } from 'node:path'
 import { appendEvent, fold, replay, readEvents, migrateLegacy } from './ledger.js'
 import { scrub, hash } from './util.js'
 import { techStackFit } from './deepscore.js'
+import { detectAiPolish } from './skills.js'
 
 import { SOURCES } from './ledger.js'
 // Python 解释器探测（跨机器可移植）：不再硬编码某台机器的绝对路径。
@@ -233,6 +234,8 @@ export function handleUpload(d, a, opts = {}) {
         readability: parsed.readability || null, ocr: !!parsed.ocr,
         // 关键字段自检：缺字段时下游不该盲信 AI 结论（pdfminer 不理解版面，双栏/表格易漏抽）
         fieldCheck: parsed.fieldCheck || null,
+        // AI 代写/过度润色检测：简历若是 AI 写的，被引用的「原文证据」可能是漂亮话
+        aiPolish: (function () { try { return detectAiPolish(clean.text) } catch (e) { return null } })(),
       },
       mail: { from: a.from || '', subject: a.subject || '', date: a.date || '', messageId: mailId, sourceReason: a.sourceReason || '', sourceConf: a.sourceConf || '' },
       created: new Date().toISOString(),
@@ -241,6 +244,12 @@ export function handleUpload(d, a, opts = {}) {
       ...(clean.dropped.length ? ['入口脱敏：' + clean.dropped.join('、')] : []),
       ...((parsed.fieldCheck && parsed.fieldCheck.missing && parsed.fieldCheck.missing.length)
         ? ['解析自检：' + parsed.fieldCheck.missing.join('、')] : []),
+      ...((function () {
+        try {
+          const ap = detectAiPolish(clean.text)
+          return (ap && ap.level !== 'clean') ? ['AI润色标记(' + ap.level + ')：' + ap.signals.join('、')] : []
+        } catch (e) { return [] }
+      })()),
     ],
     inputHash: hash(buf),
   })

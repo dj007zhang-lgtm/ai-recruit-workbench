@@ -90,7 +90,8 @@
    "cat": "S",
    "group": "技术栈-后端",
    "alias": [
-    "redis"
+    "redis",
+    "memcached"
    ]
   },
   {
@@ -98,7 +99,8 @@
    "cat": "S",
    "group": "技术栈-后端",
    "alias": [
-    "mysql"
+    "mysql",
+    "mariadb"
    ]
   },
   {
@@ -335,8 +337,7 @@
    "group": "技术栈-数据AI",
    "alias": [
     "机器学习",
-    "machine learning",
-    "ml"
+    "machine learning"
    ]
   },
   {
@@ -465,7 +466,10 @@
    "cat": "S",
    "group": "技术栈-运维",
    "alias": [
-    "docker"
+    "docker",
+    "container",
+    "containers",
+    "容器化"
    ]
   },
   {
@@ -475,7 +479,11 @@
    "alias": [
     "ci/cd",
     "cicd",
-    "jenkins"
+    "jenkins",
+    "持续集成",
+    "持续交付",
+    "gitlab ci",
+    "github actions"
    ]
   },
   {
@@ -959,6 +967,80 @@
    "group": "证书",
    "alias": [
     "cfa"
+   ]
+  },
+  {
+   "name": "PostgreSQL",
+   "cat": "S",
+   "group": "技术栈-数据库",
+   "alias": [
+    "postgresql",
+    "postgres",
+    "pgsql"
+   ]
+  },
+  {
+   "name": "REST API",
+   "cat": "S",
+   "group": "技术栈-通用",
+   "alias": [
+    "rest",
+    "restful",
+    "rest api",
+    "http api",
+    "接口设计"
+   ]
+  },
+  {
+   "name": "gRPC",
+   "cat": "S",
+   "group": "技术栈-通用",
+   "alias": [
+    "grpc",
+    "protobuf"
+   ]
+  },
+  {
+   "name": "GraphQL",
+   "cat": "S",
+   "group": "技术栈-通用",
+   "alias": [
+    "graphql"
+   ]
+  },
+  {
+   "name": "Terraform",
+   "cat": "S",
+   "group": "技术栈-运维",
+   "alias": [
+    "terraform"
+   ]
+  },
+  {
+   "name": "AWS",
+   "cat": "K",
+   "group": "技术栈-云",
+   "alias": [
+    "aws",
+    "amazon web services"
+   ]
+  },
+  {
+   "name": "GCP",
+   "cat": "K",
+   "group": "技术栈-云",
+   "alias": [
+    "gcp",
+    "google cloud"
+   ]
+  },
+  {
+   "name": "Azure",
+   "cat": "K",
+   "group": "技术栈-云",
+   "alias": [
+    "azure",
+    "microsoft cloud"
    ]
   }
  ]
