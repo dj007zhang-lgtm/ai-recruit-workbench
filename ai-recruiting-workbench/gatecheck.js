@@ -20,6 +20,16 @@ export function buildGatePrompt(position, resume) {
     '硬门槛（逐条核对）：',
     list,
     '',
+    '# 第一步：先分类，再判定（最容易出错的地方）',
+    '岗位门槛列表里常混着两类东西，处理方式完全不同：',
+    '- 【硬门槛】表述含「必须/要求/需具备/XX及以上/限」，或明确年限「3年以上」→ 不满足则淘汰。',
+    '- 【优先条件】表述含「优先/加分/最好/更佳/者优先」→ 不满足**不影响通过**，只作同等条件下参考。',
+    '  · 例：「硕士优先」「有大厂经验优先」「英语六级优先」都是优先条件，本科/无大厂/无六级**不能判 fail**。',
+    '- 【软性要求】表述含「熟悉/了解/掌握/具备…能力」→ 属于 BARS 判档范畴，**不作为门槛判定**。',
+    '- 【岗位职责】表述含「负责/参与/推动」→ 这是对岗位工作的描述，不是对候选人的要求，跳过。',
+    '输出时为每条标注 type："hard" | "preferred" | "soft" | "duty"。',
+    '**只有 type=hard 且 verdict=fail 才算不通过。** type=preferred 的项即使不满足，verdict 也应标 pass（附说明）。',
+    '',
     '# 判断原则（重要）',
     '- 读懂简历的实际含义：例如「2018-2022 就读于XX大学软件工程」= 全日制本科计算机相关专业；「专升本/自考/函授/成人教育」≠ 统招全日制。',
     '- 【英文简历等价识别】海外/外企简历用英文表述，需等价理解，不得因语言不同判「缺证据」：',
@@ -51,7 +61,7 @@ export function buildGatePrompt(position, resume) {
     '# 输出（严格 JSON，对每条门槛都要有，顺序与上面一致）',
     '{',
     '  "gates": [',
-    '    { "gate": "门槛原文", "verdict": "pass|fail|pending", "reason": "人话说明：从简历看到什么（引用事实），所以是否满足", "evidence": "引用的简历原文片段（无则空字符串）" }',
+    '    { "gate": "门槛原文", "type": "hard|preferred|soft|duty", "verdict": "pass|fail|pending", "reason": "人话说明：从简历看到什么（引用事实），所以是否满足", "evidence": "引用的简历原文片段（无则空字符串）" }',
     '  ],',
     '  "summary": "一句话总评：候选人整体是否过门槛、关键短板/亮点"',
     '}',
@@ -73,6 +83,16 @@ export function parseGateResult(text) {
     for (const g of o.gates) {
       const v = String(g.verdict || '').toLowerCase()
       g.verdict = (v === 'pass' || v === 'fail' || v === 'pending') ? v : 'pending'
+      // 门槛类型：只有 hard 才可能触发淘汰；缺省按 hard 处理（保守，但由下面的一致性校验兜底）
+      const ty = String(g.type || '').toLowerCase()
+      g.type = (ty === 'hard' || ty === 'preferred' || ty === 'soft' || ty === 'duty') ? ty : 'hard'
+      // 一致性兜底：表述含「优先/加分/最好/更佳」的项，即使模型判了 fail，也降级为 pass（优先条件不淘汰人）
+      if (g.type === 'hard' && /优先|加分|最好|更佳|更优/.test(String(g.gate || ''))) {
+        g.type = 'preferred'
+        if (g.verdict === 'fail') { g.verdict = 'pass'; g.reason = '（优先条件，不满足不影响通过）' + (g.reason || '') }
+      }
+      // 非 hard 类型不允许 fail
+      if (g.type !== 'hard' && g.verdict === 'fail') { g.verdict = 'pass'; g.reason = '（' + g.type + '，不计入淘汰）' + (g.reason || '') }
       g.reason = String(g.reason || '').slice(0, 300)
       g.evidence = String(g.evidence || '').slice(0, 300)
     }

@@ -1330,8 +1330,9 @@ export function apply(ctx, config = {}) {
       const r = await llmDeepAssess(buildGatePrompt(p, c.resume || ''))
       const parsed = r.ok ? parseGateResult(r.text) : null
       if (!parsed || !parsed.gates.length) return null
-      const gateResults = parsed.gates.map(g => ({ gate: g.gate, verdict: g.verdict, reason: g.reason, evidence: g.evidence }))
-      const hardFail = gateResults.some(g => g.verdict === 'fail')
+      const gateResults = parsed.gates.map(g => ({ gate: g.gate, type: g.type || 'hard', verdict: g.verdict, reason: g.reason, evidence: g.evidence }))
+      // 只有「真硬门槛」的 fail 才触发淘汰；优先条件/软性要求不满足不影响通过
+      const hardFail = gateResults.some(g => g.type === 'hard' && g.verdict === 'fail')
       // 只写门槛结论，务必保留原 route/weighted/scores（否则覆盖丢分）
       recordAssessment(d, { candidateId,
         gateResults, summary: parsed.summary || '', partial: true,  // 门槛增强：partial，保留原 route/scores/weighted
@@ -1339,7 +1340,7 @@ export function apply(ctx, config = {}) {
         basedOn: { rule: 'gate-ai-v1' } })
       // 硬门槛一票否决：有明确证据不合格 → 直接淘汰（授权自动化，可复捞）。区别于"缺证据留人复核"
       if (hardFail) {
-        const failed = gateResults.filter(g => g.verdict === 'fail').map(g => g.gate).join('、')
+        const failed = gateResults.filter(g => g.type === 'hard' && g.verdict === 'fail').map(g => g.gate).join('、')
         const cur = (fold(d).byId[candidateId] || {})
         const NO_ELIM = ['已淘汰', '人才库', '已入职', 'Offer已发', 'Offer已接受', '待入职']
         if (NO_ELIM.indexOf(cur.stage) < 0) {
@@ -1437,16 +1438,17 @@ export function apply(ctx, config = {}) {
     try {
       const gr = await llmDeepAssess(buildGatePrompt(p, c.resume || ''))
       const parsed = gr.ok ? parseGateResult(gr.text) : null
-      if (parsed && parsed.gates.length) gateResults = parsed.gates.map(g => ({ gate: g.gate, verdict: g.verdict, reason: g.reason, evidence: g.evidence }))
+      if (parsed && parsed.gates.length) gateResults = parsed.gates.map(g => ({ gate: g.gate, type: g.type || 'hard', verdict: g.verdict, reason: g.reason, evidence: g.evidence }))
     } catch (e) {}
     if (!gateResults) {
       const { evaluateGate } = await import('./assess.js')
       const gates = (p.scorecard.hardGates) ? p.scorecard.hardGates.map(g => typeof g === 'string' ? g : g.item) : (p.gates || [])
       gateResults = gates.map(g => { const r = evaluateGate(g, c.resume || ''); return { gate: g, verdict: r.verdict, reason: r.reason } })
     }
-    const hardFail = gateResults.some(g => g.verdict === 'fail')
+    // 只有真硬门槛的 fail 才降级为 C；优先条件不满足不影响评级
+    const hardFail = gateResults.some(g => (g.type || 'hard') === 'hard' && g.verdict === 'fail')
     let grade = scored.grade, score = scored.score, conclusion
-    if (hardFail) { grade = 'C'; conclusion = '硬门槛未通过：' + gateResults.filter(g => g.verdict === 'fail').map(g => g.gate).join('、') }
+    if (hardFail) { grade = 'C'; conclusion = '硬门槛未通过：' + gateResults.filter(g => (g.type || 'hard') === 'hard' && g.verdict === 'fail').map(g => g.gate).join('、') }
     else conclusion = grade === 'S' ? '高度契合' : grade === 'A' ? '基本胜任' : grade === 'B' ? '勉强匹配有短板' : '不建议推进'
     const act = gradeToAction(grade)
     const weak = scored.alignment.filter(a => a.level === 'L0' || a.level === 'L1').map(a => a.dim + '(' + a.level + ')')
